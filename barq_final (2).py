@@ -8,7 +8,7 @@ import json
 st.set_page_config(page_title="برق الذكي VIP", page_icon="⚡", layout="wide")
 
 # 2. الاتصال بسيرفرات Groq
-API_KEY = os.environ.get("GROQ_API_KEY", "") 
+API_KEY = os.environ.get("GROQ_API_KEY", "")
 client = Groq(api_key=API_KEY)
 
 FILE_NAME = 'barq_final (2).py'
