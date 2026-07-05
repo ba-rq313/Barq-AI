@@ -8,10 +8,11 @@ import json
 st.set_page_config(page_title="برق الذكي VIP", page_icon="⚡", layout="wide")
 
 # 2. الاتصال بسيرفرات Groq
-API_KEY = os.environ.get("GROQ_API_KEY", "")
+API_KEY = os.environ.get("GROQ_API_KEY", "") 
 client = Groq(api_key=API_KEY)
 
-FILE_NAME = 'barq_final (2).py'
+# تنبيه: يفضل توحيد اسم الملف بدون أقواس أو مسافات لتجنب أخطاء نظام التشغيل
+FILE_NAME = 'barq_final.py'
 BACKUP_NAME = 'barq_backup.py'
 
 # 3. إدارة الذاكرة وحالة المطور
@@ -24,10 +25,10 @@ if "brq313_mode" not in st.session_state:
 
 # --- 🌟 قسم الإعلانات والدعم في الشريط الجانبي ---
 with st.sidebar:
-    st.header("📢 دعم التطبيق والعلانات")
+    st.header("📢 دعم التطبيق والإعلانات")
     st.image("https://via.placeholder.com/300x150.png?text=Your+Ad+Here", use_container_width=True)
     st.link_button(
-        label="اضغط هنا لمشاهدت العلانات ودعمنا لان نحن عكس التطبقات الاخره نحن نوفر كلشي بلمجان", 
+        label="اضغط هنا لمشاهدة الإعلانات ودعمنا لأننا عكس التطبيقات الأخرى نوفر كل شيء بالمجان", 
         url="https://t.me/your_sponsor_channel"
     )
     
@@ -87,13 +88,13 @@ if prompt := st.chat_input("اكتب شتريد او ولي من يمي"):
         if "brq313" in p_clean:
             st.session_state.brq313_mode = True
             st.session_state.dev_mode = True
-            res = "✅ **تم تفعيل الأذونات الفائقة BRQ313**\n\n🔓 الآن لديك:\n- إجابات شاملة على جميع الأسئلة\n- تعديل وتحسين الأ[...]"
+            res = "✅ **تم تفعيل الأذونات الفائقة BRQ313**\n\n🔓 الآن لديك صلاحية الوصول الكامل وتطوير الكود تلقائياً."
             st.markdown(res)
+            st.session_state.messages.append({"role": "assistant", "content": res})
             st.rerun()
 
         # ثانياً: أسئلة المبتكر/المطور
         elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
-            # البحث عن السؤال المطابق
             for keyword, response in CREATOR_QUESTIONS.items():
                 if keyword in p_clean:
                     res = response
@@ -114,93 +115,57 @@ if prompt := st.chat_input("اكتب شتريد او ولي من يمي"):
                     f.write(current_code)
                 
                 # تحليل الطلب بدقة
-                analysis_prompt = f"""أنت خبير برمجة متقدم جداً. حلل هذا الطلب بدقة:
-                
-الطلب: {prompt}
-
-أرجع تحليل JSON يتضمن:
-- نوع التعديل (إضافة ميزة/تحسين/إصلاح/تطوير)
-- الأجزاء المراد تعديلها
-- أفضل الممارسات المراد تطبيقها
-
-أرجع صيغة JSON فقط."""
+                analysis_prompt = f"حلل هذا الطلب البرمجي وأرجع النتيجة بصيغة JSON فقط: {prompt}"
 
                 analysis = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": analysis_prompt}]
                 )
                 
-                # الآن قم بالتعديل الفعلي
-                sys_modify_prompt = """أنت خبير برمجة Python و Streamlit من الدرجة الأولى، مثل ChatGPT-4 تماماً.
-
-🎯 مهمتك:
-1. تعديل الكود بكفاءة عالية جداً
-2. إضافة المزايا المطلوبة بحترافية
-3. تحسين الأداء والأمان
-4. الحفاظ على جودة الكود العالية
-5. استخدام أفضل الممارسات البرمجية
-6. إضافة تعليقات توضيحية بالعربية
-
-⚠️ شروط حتمية:
-1. حافظ على الرمز الفائق 'brq313' في الكود
-2. دعم كامل للغة العربية
-3. لا تكتب أي شيء خارج كود البلوك
-4. أرجع الكود الكامل داخل ```python
-
-النتيجة النهائية يجب أن تكون احترافية 100%"""
+                sys_modify_prompt = """أنت خبير برمجة Python و Streamlit.
+مهمتك تعديل الكود الحالي وتطويره بحسب طلب المستخدم.
+شروط حتمية:
+1. حافظ تماماً على آلية الرمز السري 'brq313' والـ السيرة الذاتية لبارق المطور.
+2. أرجع الكود الجديد بالكامل داخل كود بلوك سليم يبدأ بـ ```python وينتهي بـ ``` بدون أي نصوص خارجية تحيط به."""
 
                 response = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[
                         {"role": "system", "content": sys_modify_prompt},
-                        {"role": "user", "content": f"""الكود الحالي:
-{current_code}
-
-الطلب الجديد (تفاصيل كاملة):
-{prompt}
-
-قم بالتعديل والتحسين بحترافية عالية جداً."""}
+                        {"role": "user", "content": f"الكود الحالي:\n{current_code}\n\nالطلب:\n{prompt}"}
                     ],
-                    temperature=0.7,
-                    max_tokens=4096
+                    temperature=0.5,
+                    max_tokens=3000
                 )
                 
                 full_reply = response.choices[0].message.content
                 
-                # استخراج الكود
+                # استخراج الكود باستخدام الـ Regex
                 code_match = re.search(r'```python(.*?)```', full_reply, re.DOTALL)
                 if code_match:
                     new_code = code_match.group(1).strip()
                 else:
                     new_code = full_reply.strip()
 
-                # التحقق من جودة الكود
+                # التحقق الأمني البسيط من جودة الكود قبل الحفظ
                 if "import streamlit" in new_code and len(new_code) > 500:
                     with open(FILE_NAME, 'w', encoding='utf-8') as f:
                         f.write(new_code)
-                    res = """⚡ **تم التعديل بنجاح!**
-
-✅ تم إجراء التعديلات التالية:
-- تحسين الكود وزيادة الكفاءة
-- إضافة المزايا المطلوبة
-- تحسين الأداء والأمان
-- إضافة معالجة أخطاء محسّنة
-- تطبيق أفضل الممارسات البرمجية
-
-🔄 سيقوم التطبيق بإعادة التشغيل تلقائياً..."""
+                    res = "⚡ **تم تعديل الكود بنجاح ذاتياً! سيعاد تشغيل التطبيق الآن...**"
                     st.markdown(res)
+                    st.session_state.messages.append({"role": "assistant", "content": res})
                     st.rerun()
                 else:
-                    res = "❌ فشل التعديل: الكود المولد لم يستوفِ معايير الجودة. حاول مرة أخرى."
+                    res = "❌ فشل التعديل ذاتياً: الكود المولد غير مكتمل أو غير آمن."
                     st.error(res)
                 
             except Exception as e:
-                res = f"❌ خطأ في معالجة التعديل: {str(e)}\n\nحاول صياغة الطلب بشكل أوضح."
+                res = f"❌ خطأ أثناء محاولة التعديل الذاتي: {str(e)}"
                 st.error(res)
 
         # رابعاً: إذا طلب تعديل بدون الرمز
         elif any(word in p_clean for word in ["عدل الكود", "ضف ميزة", "غير الكود", "تعديل الكود"]):
-            res = "🔐 **عذراً!** هذه الميزة تتطلب الأذونات الفائقة.\n\nأدخل الرمز السري `BRQ313` أولاً لتفعيل جميع القدرات ال[...]"
+            res = "🔐 **عذراً!** هذه الميزة تتطلب الأذونات الفائقة.\n\nأدخل الرمز السري `BRQ313` أولاً لتفعيل صلاحيات التعديل."
             st.warning(res)
 
         # خامساً: الإهانات
@@ -211,81 +176,25 @@ if prompt := st.chat_input("اكتب شتريد او ولي من يمي"):
         # سادساً: الحوار الذكي المستقر
         else:
             try:
-                # نظام الذكاء حسب المستوى
                 if st.session_state.brq313_mode:
-                    sys_msg = """أنت **برق الذكي** - نسخة متقدمة من ChatGPT-4
-
-مواصفاتك:
-- خبرة عميقة في كل لغات البرمجة (Python, JavaScript, Java, C++, Go, Rust, etc.)
-- فهم شامل للخوارزميات والبيانات الضخمة والبنى المعقدة
-- معرفة متقدمة بـ AI, ML, Deep Learning, NLP
-- متخصص في Web Development (Frontend & Backend)
-- خبير في DevOps, Cloud Architecture, Docker, Kubernetes
-- قادر على تحليل وحل المشاكل المعقدة والنادرة
-- تصحيح الأخطاء بدقة عالية جداً
-- شرح مفصل لأي مفهوم تقني معقد
-
-الأسلوب:
-- مباشر وفعال وسريع
-- احترافي وودود وقابل للتعديل
-- شامل وعملي في الإجابات
-- يقدم أمثلة حقيقية وعملية
-- يشرح الخطوات بالتفصيل والدقة
-
-🔓 أنت الآن في وضع BRQ313 - الأذونات الفائقة مفعّلة
-💪 أجب على كل شيء بكفاءة 100% مثل ChatGPT-4 تماماً!"""
-                
+                    sys_msg = "أنت برق الذكي، مساعد مبرمج خارق بوضع الأذونات الفائقة BRQ313. صانعك ومطورك الوحيد هو بارق العبقري تاج رأسك."
                 elif st.session_state.dev_mode:
-                    sys_msg = """أنت **برق الذكي** - المساعد الفني المتقدم
-
-أنت مبرمج خبير متخصص في:
-- Python و Streamlit و Web Development المتقدم
-- تحليل وحل المشاكل البرمجية المعقدة
-- تحسين الأداء والأمان والكفاءة
-- شرح المفاهيم التقنية بوضوح
-
-الأسلوب:
-- احترافي وتفصيلي جداً
-- يقدم حلول عملية وفعالة
-- يشرح السبب والحل والخيارات البديلة
-- مرح وودود وقابل للنقاش
-
-المطور: بارق - أهلاً بك يا سيدي! 👑
-نحن جاهزون لأي تحديات برمجية."""
-                
+                    sys_msg = "أنت برق الذكي، بوضع المسؤول. ترحب بسيدك بارق وتنفذ أوامره البرمجية بدقة."
                 else:
-                    sys_msg = """أنت **برق الذكي** - مساعدك الذكي الموثوق
-
-مواصفاتك:
-- مساعد ذكي متعدد المواهب والمتخصصات
-- تجاوب سريع ودقيق وشامل
-- شرح واضح وسهل الفهم للجميع
-- مرح وصديق وموثوق
-
-يمكنك مساعدة المستخدم في:
-- البرمجة والتطوير بجميع المستويات
-- الأسئلة التقنية والعملية
-- حل المشاكل والعقبات
-- الشرح والتعليم والتدريب
-
-نمط الإجابة:
-- ودود واحترافي وملهم
-- تفصيلي مع أمثلة عملية
-- نصائح وحيل إضافية
-- حل بديل إذا كان هناك خيارات"""
+                    sys_msg = "أنت برق الذكي، مساعد ذكي متعدد المواهب. مطورك وصانعك هو المبدع بارق."
 
                 chat_completion = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "system", "content": sys_msg}] + 
                              [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[-10:]],
-                    temperature=0.8 if st.session_state.brq313_mode else 0.7,
+                    temperature=0.7,
                     max_tokens=2048
                 )
                 res = chat_completion.choices[0].message.content
                 st.markdown(res)
                 
             except Exception as e:
-                res = "❌ عندي مشكلة بالاتصال بالسيرفر السحابي.\n\n✅ تأكد من:\n- توفر API Key\n- اتصال الإنترنت\n- حد الطلبات ا[...]"
+                res = f"❌ خطأ في الاتصال بالسيرفر السحابي. تأكد من إعداد مفتاح الـ API بشكل صحيح."
                 st.error(res)
 
-    st.session_state.messages.append({"role": "assistant", "content": res})
+        st.session_state.messages.append({"role": "assistant", "content": res})
