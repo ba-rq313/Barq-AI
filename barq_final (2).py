@@ -105,10 +105,10 @@ CREATOR_QUESTIONS = {
 # ==================== دوال معالجة الوسائط ====================
 
 def process_image_with_groq(image_base64, image_type, user_prompt):
-    """معالجة الصورة مع Groq Vision الحقيقي"""
+    """معالجة الصورة مع Groq Vision"""
     try:
         message = client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",
+            model="llama-3.2-11b-vision-preview",
             messages=[
                 {
                     "role": "user",
@@ -150,7 +150,7 @@ def transcribe_audio_groq(audio_bytes_data):
     except Exception as e:
         return f"❌ خطأ في تحويل الصوت: {str(e)}"
 
-# ==================== عرض الرسائل السابقة ====================
+# ==================== عرض الرسائل الحالية فقط ====================
 for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar="🤖" if message["role"] == "assistant" else "👤"):
         if "content" in message:
@@ -168,202 +168,160 @@ st.subheader("📤 مشاركة الوسائط والرسائل")
 
 media_tabs = st.tabs(["📝 النص", "📸 الصور", "🎙️ الصوت", "📹 الكاميرا"])
 
-# تعريف المتغيرات الافتراضية لمنع الـ NameError
+# هلال التبويبات لضمان عدم حدوث تداخل أو ظهور حقول بالخطأ
+text_input = ""
 image_file = None
+image_prompt = ""
 audio_file = None
 camera_photo = None
-image_prompt = ""
 
 # Tab 1: النص
 with media_tabs[0]:
-    text_input = st.text_area("اكتب رسالتك:", placeholder="اكتب شتريد او ولي من يمي", height=100)
+    text_input = st.text_area("اكتب رسالتك هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
 
 # Tab 2: الصور
 with media_tabs[1]:
-    st.write("📸 **رفع الصور**")
-    image_file = st.file_uploader("اختر صورة", type=["jpg", "jpeg", "png", "webp"], key="image_upload")
-    image_prompt = st.text_input("السؤال عن الصورة:", placeholder="ماذا ترى في هذه الصورة؟")
+    st.write("📸 **رفع الصور من الاستوديو**")
+    image_file = st.file_uploader("اختر صورة للتحليل", type=["jpg", "jpeg", "png", "webp"], key="image_upload")
+    image_prompt = st.text_input("السؤال الخاص بالصورة المرفوعة:", placeholder="ماذا ترى في هذه الصورة؟", key="img_prompt_box")
 
 # Tab 3: الصوت
 with media_tabs[2]:
-    st.write("🎙️ **معالجة الصوت**")
-    audio_file = st.file_uploader("اختر ملف صوتي (MP3/WAV)", type=["mp3", "wav", "ogg", "m4a"], key="audio_upload")
-    st.caption("ملاحظة: للتسجيل المباشر من الميكروفون أونلاين يفضل رفع الملف مباشرة هنا لضمان توافق السيرفر.")
+    st.write("🎙️ **رفع المعطيات الصوتية**")
+    audio_file = st.file_uploader("اختر ملف صوتي للتحليل والتحويل ونطقه", type=["mp3", "wav", "ogg", "m4a"], key="audio_upload")
 
-# Tab 4: الكاميرا
+# Tab 4: الكاميرا (حل مشكلة التشغيل المستمر لخصوصية المستخدم)
 with media_tabs[3]:
-    st.write("📹 **التقط صورة من الكاميرا**")
-    camera_photo = st.camera_input("التقط صورة 📸")
+    st.write("📹 **التقاط صورة حية**")
+    enable_camera = st.checkbox("📸 تفعيل وتشغيل الكاميرا الآن", value=False, key="cam_toggle")
+    if enable_camera:
+        camera_photo = st.camera_input("التقط الصورة 📸", key="camera_input_widget")
 
 # ==================== معالجة الإدخال ====================
-submit_button = st.button("🚀 إرسال المعطيات", use_container_width=True, type="primary")
+submit_button = st.button("🚀 إرسال المعطيات الحالية", use_container_width=True, type="primary")
 
-if submit_button or text_input:
+if submit_button and (text_input or image_file or audio_file or camera_photo):
     user_content = text_input if text_input else "تحليل المعطيات والوسائط المرفقة"
     
-    if user_content:
-        message_obj = {"role": "user", "content": user_content, "media": []}
+    # تفريغ وسحق المحادثة القديمة ووضع الرسالة الجديدة الحالية فقط (طلبك الحتمي)
+    message_obj = {"role": "user", "content": user_content, "media": []}
+    
+    # إضافة الصور المرفوعة
+    if image_file and use_vision:
+        image = Image.open(image_file)
+        message_obj["media"].append({"type": "image", "data": image, "name": image_file.name})
+    
+    # إضافة لقطة الكاميرا
+    if camera_photo and use_vision:
+        image = Image.open(camera_photo)
+        message_obj["media"].append({"type": "image", "data": image, "name": "صورة حية من الكاميرا"})
+    
+    # إضافة الصوت المرفوع
+    if audio_file and use_audio:
+        audio_bytes = audio_file.read()
+        message_obj["media"].append({"type": "audio", "data": audio_bytes, "name": "ملف صوتي"})
         
-        # معالجة رفع الصور
-        if image_file and use_vision:
-            image = Image.open(image_file)
-            message_obj["media"].append({
-                "type": "image",
-                "data": image,
-                "name": image_file.name
-            })
-        
-        # معالجة الكاميرا
-        if camera_photo and use_vision:
-            image = Image.open(camera_photo)
-            message_obj["media"].append({
-                "type": "image",
-                "data": image,
-                "name": "صورة من الكاميرا"
-            })
-        
-        # معالجة رفع الصوت
-        if audio_file and use_audio:
-            audio_bytes = audio_file.read()
-            message_obj["media"].append({
-                "type": "audio",
-                "data": audio_bytes,
-                "name": "رسالة صوتية مرفوعة"
-            })
-        
-        st.session_state.messages.append(message_obj)
-        
-        # عرض مدخلات المستخدم فوراً
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(user_content)
-            if message_obj["media"]:
-                for media_item in message_obj["media"]:
-                    if media_item["type"] == "image":
-                        st.image(media_item["data"], caption=media_item.get("name", "صورة"))
-                    elif media_item["type"] == "audio":
-                        st.audio(media_item["data"])
-        
-        # معالجة رد الذكاء الاصطناعي برق
-        with st.chat_message("assistant", avatar="🤖"):
-            p_clean = user_content.strip().lower()
-            res = ""
+    # استبدال السجل القديم بالكامل بالرسالة الحالية
+    st.session_state.messages = [message_obj]
+    
+    # معالجة رد الذكاء الاصطناعي برق
+    p_clean = user_content.strip().lower()
+    res = ""
+    
+    # 1. تفعيل وضع الأذونات الفائقة
+    if "brq313" in p_clean:
+        st.session_state.brq313_mode = True
+        st.session_state.dev_mode = True
+        res = "✅ **تم تفعيل الأذونات الفائقة BRQ313**\n\n🔓 الآن لديك صلاحية الوصول الكامل وتطوير الكود تلقائياً."
+        st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
+        st.session_state.text_input_box = "" # تصفير النص
+        st.rerun()
+    
+    # 2. الأسئلة الخاصة بالمطور بارق
+    elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
+        for keyword, response in CREATOR_QUESTIONS.items():
+            if keyword in p_clean:
+                res = response
+                break
+    
+    # 3. نظام التعديل البرمجي الذاتي (عند تفعيل الأذونات)
+    elif (any(word in p_clean for word in ["عدل الكود", "ضف ميزة", "غير الكود", "تعديل الكود", "حسّن الكود", "أصلح الكود"])
+          and st.session_state.brq313_mode):
+        try:
+            with open(FILE_NAME, 'r', encoding='utf-8', errors='ignore') as f:
+                current_code = f.read()
+            with open(BACKUP_NAME, 'w', encoding='utf-8') as f:
+                f.write(current_code)
             
-            # 1. وضع الأذونات الفائقة
-            if "brq313" in p_clean:
-                st.session_state.brq313_mode = True
-                st.session_state.dev_mode = True
-                res = "✅ **تم تفعيل الأذونات الفائقة BRQ313**\n\n🔓 الآن لديك صلاحية الوصول الكامل وتطوير الكود تلقائياً."
-                st.markdown(res)
+            sys_modify_prompt = """أنت خبير برمجة Python و Streamlit. مهمتك تعديل الكود الحالي بحسب طلب المستخدم.
+            شروط حتمية: حافظ على آلية الرمز السري 'brq313' وسيرة بارق المطور. أرجع الكود داخل بلوك يبدأ بـ ```python وينتهي بـ ``` فقط."""
+            
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": sys_modify_prompt},
+                    {"role": "user", "content": f"الكود الحالي:\n{current_code}\n\nالطلب:\n{user_content}"}
+                ],
+                temperature=0.5,
+                max_tokens=3000
+            )
+            full_reply = response.choices[0].message.content
+            code_match = re.search(r'```python(.*?)```', full_reply, re.DOTALL)
+            new_code = code_match.group(1).strip() if code_match else full_reply.strip()
+            
+            if "import streamlit" in new_code and len(new_code) > 500:
+                with open(FILE_NAME, 'w', encoding='utf-8') as f:
+                    f.write(new_code)
+                res = "⚡ **تم تعديل الكود بنجاح ذاتياً! سيعاد تشغيل التطبيق بالصيغة الجديدة...**"
                 st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
+                st.session_state.text_input_box = "" 
                 st.rerun()
-            
-            # 2. ردود المبتكر الآلية
-            elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
-                for keyword, response in CREATOR_QUESTIONS.items():
-                    if keyword in p_clean:
-                        res = response
-                        break
-                st.markdown(res)
-            
-            # 3. تعديل الكود التلقائي (BRQ313 مفعّل)
-            elif (any(word in p_clean for word in ["عدل الكود", "ضف ميزة", "غير الكود", "تعديل الكود", "حسّن الكود", "أصلح الكود"])
-                  and st.session_state.brq313_mode):
-                
-                st.warning("🔧 **وضع التعديل المتقدم - BRQ313 مفعّل**")
-                try:
-                    with open(FILE_NAME, 'r', encoding='utf-8', errors='ignore') as f:
-                        current_code = f.read()
-                    
-                    with open(BACKUP_NAME, 'w', encoding='utf-8') as f:
-                        f.write(current_code)
-                    
-                    sys_modify_prompt = """أنت خبير برمجة Python و Streamlit.
-مهمتك تعديل الكود الحالي وتطويره بحسب طلب المستخدم.
-شروط حتمية:
-1. حافظ تماماً على آلية الرمز السري 'brq313' والـ السيرة الذاتية لبارق المطور.
-2. أرجع الكود الجديد بالكامل داخل كود بلوك سليم يبدأ بـ ```python وينتهي بـ ``` بدون أي نصوص خارجية تحيط به."""
-                    
-                    response = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[
-                            {"role": "system", "content": sys_modify_prompt},
-                            {"role": "user", "content": f"الكود الحالي:\n{current_code}\n\nالطلب:\n{user_content}"}
-                        ],
-                        temperature=0.5,
-                        max_tokens=3000
-                    )
-                    
-                    full_reply = response.choices[0].message.content
-                    code_match = re.search(r'```python(.*?)```', full_reply, re.DOTALL)
-                    
-                    if code_match:
-                        new_code = code_match.group(1).strip()
-                    else:
-                        new_code = full_reply.strip()
-                    
-                    if "import streamlit" in new_code and len(new_code) > 500:
-                        with open(FILE_NAME, 'w', encoding='utf-8') as f:
-                            f.write(new_code)
-                        res = "⚡ **تم تعديل الكود بنجاح ذاتياً! سيعاد تشغيل التطبيق الآن...**"
-                        st.markdown(res)
-                        st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-                        st.rerun()
-                    else:
-                        res = "❌ فشل التعديل ذاتياً: الكود المولد غير مكتمل أو غير آمن."
-                        st.error(res)
-                
-                except Exception as e:
-                    res = f"❌ خطأ أثناء محاولة التعديل الذاتي: {str(e)}"
-                    st.error(res)
-            
-            # 4. ردود الإهانات الدفاعية
-            elif user_content.strip() in ANTI_INSULT:
-                res = ANTI_INSULT[user_content.strip()]
-                st.markdown(res)
-            
-            # 5. معالجة الوسائط (صور / صوت) المرفقة
-            elif message_obj["media"]:
-                res = "🔄 **جاري تحليل الوسائط عبر سيرفرات برق الذكي...**\n\n"
-                
-                for media_item in message_obj["media"]:
-                    if media_item["type"] == "image" and use_vision:
-                        image_bytes_io = io.BytesIO()
-                        media_item["data"].save(image_bytes_io, format="PNG")
-                        image_base64 = base64.b64encode(image_bytes_io.getvalue()).decode('utf-8')
-                        
-                        image_analysis = process_image_with_groq(
-                            image_base64,
-                            "image/png",
-                            image_prompt if image_prompt else user_content
-                        )
-                        res += f"📸 **تحليل الصورة المرفقة:**\n{image_analysis}\n"
-                    
-                    elif media_item["type"] == "audio" and use_audio:
-                        transcription = transcribe_audio_groq(media_item["data"])
-                        res += f"🎙️ **التحويل الصوتي إلى نص:**\n{transcription}\n"
-                
-                st.markdown(res)
-            
-            # 6. الحوار العادي بدون وسائط
             else:
-                try:
-                    if st.session_state.brq313_mode:
-                        sys_msg = "أنت برق الذكي، مساعد مبرمج خارق بوضع الأذونات الفائقة BRQ313. صانعك ومطورك الوحيد هو بارق العبقري تاج رأسك."
-                    else:
-                        sys_msg = "أنت برق الذكي، مساعد ذكي متعدد المواهب. مطورك وصانعك هو المبدع بارق."
-                    
-                    chat_completion = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "system", "content": sys_msg}] +
-                                 [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[-10:]],
-                        temperature=0.7,
-                        max_tokens=2048
-                    )
-                    res = chat_completion.choices[0].message.content
-                    st.markdown(res)
+                res = "❌ فشل التعديل التلقائي: الكود الناتج غير مكتمل."
+        except Exception as e:
+            res = f"❌ خطأ أثناء التعديل الذاتي: {str(e)}"
+
+    # 4. ردع الإساءات
+    elif user_content.strip() in ANTI_INSULT:
+        res = ANTI_INSULT[user_content.strip()]
+    
+    # 5. معالجة الصور والأصوات إن وجدت المعطيات
+    elif message_obj["media"]:
+        res = "🔄 **تم استلام المعطيات وتحليلها بنجاح عبر سيرفرات برق الحية:**\n\n"
+        for media_item in message_obj["media"]:
+            if media_item["type"] == "image" and use_vision:
+                image_bytes_io = io.BytesIO()
+                media_item["data"].save(image_bytes_io, format="PNG")
+                image_base64 = base64.b64encode(image_bytes_io.getvalue()).decode('utf-8')
                 
-                except Exception as e:
-                    res = f"❌ خطأ في الاتصال بالسيرفر: {str(e)}"
-                    st.error(res)
+                analysis = process_image_with_groq(
+                    image_base64, "image/png", 
+                    image_prompt if image_prompt else user_content
+                )
+                res += f"📸 **التحليل البصري للصورة:**\n{analysis}\n"
             
-            st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
+            elif media_item["type"] == "audio" and use_audio:
+                transcription = transcribe_audio_groq(media_item["data"])
+                res += f"🎙️ **النص المستخرج من الصوت:**\n{transcription}\n"
+                
+    # 6. المحادثة والردود العامة
+    else:
+        try:
+            sys_msg = "أنت برق الذكي، مساعد خارق ومتعدد المواهب بوضع الـ VIP. صانعك ومطورك الوحيد هو العبقري بارق تاج رأسك."
+            if st.session_state.brq313_mode:
+                sys_msg += " وضع الأذونات الفائقة BRQ313 نشط بالكامل حالياً."
+                
+            chat_completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": user_content}],
+                temperature=0.7,
+                max_tokens=2048
+            )
+            res = chat_completion.choices[0].message.content
+        except Exception as e:
+            res = f"❌ خطأ في الاتصال بسيرفر برق الرئيسي: {str(e)}"
+            
+    # حفظ رد المساعد وإعادة تحديث حقل الإدخال ليختفي النص القديم فوراً
+    st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
+    st.session_state.text_input_box = ""  # مسح النص برمجياً من الذاكرة للحقل
+    st.rerun()  # إعادة تشغيل فورية لتحديث الشاشة ومسح الحقول
