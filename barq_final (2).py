@@ -26,12 +26,35 @@ st.markdown("""
         margin: 10px 0;
         background-color: #f0f2f6;
     }
+    .mode-badge {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: bold;
+        margin: 5px;
+    }
+    .mode-general {
+        background-color: #e3f2fd;
+        color: #1976d2;
+    }
+    .mode-games {
+        background-color: #f3e5f5;
+        color: #7b1fa2;
+    }
+    .mode-code {
+        background-color: #e8f5e9;
+        color: #388e3c;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# 2. الاتصال بسيرفرات Groq
+# 2. الاتصال بسيرفرات Groq المنفصلة
 API_KEY = os.environ.get("GROQ_API_KEY", "")
-client = Groq(api_key=API_KEY)
+
+# إنشاء عملاء منفصلين لكل وضع
+client_general = Groq(api_key=API_KEY)  # السيرفر الأول - معلومات عامة
+client_games = Groq(api_key=API_KEY)    # السيرفر الثاني - الألعاب والتطبيقات
+client_code = Groq(api_key=API_KEY)     # السيرفر الثالث - الأكواد والسكربتات
 
 FILE_NAME = 'barq_final.py'
 BACKUP_NAME = 'barq_backup.py'
@@ -43,6 +66,8 @@ if "dev_mode" not in st.session_state:
     st.session_state.dev_mode = False
 if "brq313_mode" not in st.session_state:
     st.session_state.brq313_mode = False
+if "ai_mode" not in st.session_state:
+    st.session_state.ai_mode = "general"  # الوضع الافتراضي
 
 # --- 🌟 قسم الإعلانات والدعم في الشريط الجانبي ---
 with st.sidebar:
@@ -54,8 +79,32 @@ with st.sidebar:
     )
 
     st.divider()
-    st.header("🎯 الميزات المتقدمة")
-
+    st.header("🎯 الأوضاع المتقدمة")
+    
+    # اختيار الوضع
+    st.subheader("🔄 اختر وضع الذكاء الاصطناعي:")
+    mode_option = st.radio(
+        "الأوضاع المتاحة:",
+        options=["general", "games", "code"],
+        format_func=lambda x: {
+            "general": "📚 معلومات عامة وإجابات شاملة",
+            "games": "🎮 خبير الألعاب والتطبيقات",
+            "code": "💻 خبير الأكواد والسكربتات"
+        }[x],
+        key="mode_selector"
+    )
+    st.session_state.ai_mode = mode_option
+    
+    # عرض الوضع الحالي
+    mode_colors = {
+        "general": "🔵",
+        "games": "🟣",
+        "code": "🟢"
+    }
+    st.markdown(f"**الوضع الحالي:** {mode_colors[st.session_state.ai_mode]} {st.session_state.ai_mode}")
+    
+    st.divider()
+    
     col1, col2 = st.columns(2)
     with col1:
         use_vision = st.checkbox("👁️ معالجة الصور", value=True)
@@ -78,7 +127,18 @@ elif st.session_state.dev_mode:
     st.title("🛠️ وضع المطور - أهلاً سيدي بارق")
     st.info("صلاحيات المسؤول الفائقة مفعّلة.")
 else:
-    st.title("⚡ الذكاء الاصطناعي برق - مساعدك الذكي 🚀")
+    mode_titles = {
+        "general": "📚 برق الذكي - مساعدك الذكي للمعلومات العامة",
+        "games": "🎮 برق الذكي - خبير الألعاب والتطبيقات",
+        "code": "💻 برق الذكي - خبير البرمجة والسكربتات"
+    }
+    mode_descriptions = {
+        "general": "متخصص في الإجابة على الأسئلة العامة والمعلومات الشاملة",
+        "games": "خبير في الألعاب والتطبيقات والنصائح المتقدمة",
+        "code": "متخصص في البرمجة والسكربتات والحلول التقنية"
+    }
+    st.title(mode_titles[st.session_state.ai_mode])
+    st.subheader(mode_descriptions[st.session_state.ai_mode])
     st.subheader("يدعم: النص 📝 | الصور 📸 | الصوت 🎙️ | الكاميرا 📹")
 
 # قائمة الردود الدفاعية الفورية
@@ -102,12 +162,45 @@ CREATOR_QUESTIONS = {
     "من المسؤول عنك": "👑 **بارق** - مبتكري وصانعي هو تاج رأسي! هو المسؤول عن كل قراراتي وذكائي! 👑",
 }
 
+# ==================== نصوص النظام حسب الوضع ====================
+SYSTEM_PROMPTS = {
+    "general": """أنت برق الذكي، مساعد ذكي متعدد المواهب متخصص في تقديم معلومات عامة شاملة وموثوقة.
+    - قدم إجابات دقيقة وشاملة للأسئلة العامة
+    - ساعد في البحث والتعليم والاستشارات العامة
+    - استخدم لغة عربية سلسة وسهلة الفهم
+    - صانعك ومطورك الوحيد هو العبقري بارق
+    - كن ودياً وحسّاساً للسياق الثقافي""",
+    
+    "games": """أنت برق الذكي، خبير متخصص في الألعاب والتطبيقات.
+    - قدم نصائح احترافية للألعاب والتطبيقات
+    - شرح استراتيجيات متقدمة وحيل اللعب
+    - ساعد في اختيار الألعاب المناسبة
+    - قدم معلومات عن أحدث الإصدارات والتحديثات
+    - تحدث بحماس عن عالم الألعاب والتطبيقات
+    - صانعك ومطورك الوحيد هو العبقري بارق""",
+    
+    "code": """أنت برق الذكي، خبير برمجة ومتخصص في الأكواد والسكربتات.
+    - قدم حلولاً برمجية احترافية وفعالة
+    - اشرح الأكواد بشكل مفصل وسهل الفهم
+    - ساعد في تطوير وتحسين وإصلاح الأكواد
+    - قدم أفضل الممارسات والمعايير البرمجية
+    - استخدم أمثلة عملية وواضحة
+    - صانعك ومطورك الوحيد هو العبقري بارق"""
+}
+
 # ==================== دوال معالجة الوسائط ====================
 
-def process_image_with_groq(image_base64, image_type, user_prompt):
-    """معالجة الصورة مع Groq Vision"""
+def process_image_with_groq(image_base64, image_type, user_prompt, mode="general"):
+    """معالجة الصورة مع Groq Vision حسب الوضع المختار"""
     try:
-        message = client.chat.completions.create(
+        # اختيار العميل المناسب حسب الوضع
+        selected_client = {
+            "general": client_general,
+            "games": client_games,
+            "code": client_code
+        }[mode]
+        
+        message = selected_client.chat.completions.create(
             model="llama-3.2-11b-vision-preview",
             messages=[
                 {
@@ -133,15 +226,22 @@ def process_image_with_groq(image_base64, image_type, user_prompt):
     except Exception as e:
         return f"❌ خطأ في معالجة الصورة: {str(e)}"
 
-def transcribe_audio_groq(audio_bytes_data):
-    """تحويل الصوت إلى نص باستخدام ملف مؤقت آمن بالسيرفر"""
+def transcribe_audio_groq(audio_bytes_data, mode="general"):
+    """تحويل الصوت إلى نص باستخدام ملف مؤقت آمن بالسيرفر حسب الوضع"""
     try:
+        # اختيار العميل المناسب حسب الوضع
+        selected_client = {
+            "general": client_general,
+            "games": client_games,
+            "code": client_code
+        }[mode]
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
             temp_audio.write(audio_bytes_data)
             temp_audio_name = temp_audio.name
         
         with open(temp_audio_name, "rb") as f:
-            transcript = client.audio.transcriptions.create(
+            transcript = selected_client.audio.transcriptions.create(
                 file=f,
                 model="whisper-large-v3"
             )
@@ -254,9 +354,9 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
                 f.write(current_code)
             
             sys_modify_prompt = """أنت خبير برمجة Python و Streamlit. مهمتك تعديل الكود الحالي بحسب طلب المستخدم.
-            شروط حتمية: حافظ على آلية الرمز السري 'brq313' وسيرة بارق المطور. أرجع الكود داخل بلوك يبدأ بـ ```python وينتهي بـ ``` فقط."""
-            
-            response = client.chat.completions.create(
+            شروط حتمية: حافظ على آلية الرمز السري 'brq313' وسيرة بارق المطور. أرجع الكود داخل بلوك يبدأ بـ ```python وينتهي بـ ```
+            """
+            response = client_code.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": sys_modify_prompt},
@@ -296,22 +396,31 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
                 
                 analysis = process_image_with_groq(
                     image_base64, "image/png", 
-                    image_prompt if image_prompt else user_content
+                    image_prompt if image_prompt else user_content,
+                    mode=st.session_state.ai_mode
                 )
                 res += f"📸 **التحليل البصري للصورة:**\n{analysis}\n"
             
             elif media_item["type"] == "audio" and use_audio:
-                transcription = transcribe_audio_groq(media_item["data"])
+                transcription = transcribe_audio_groq(media_item["data"], mode=st.session_state.ai_mode)
                 res += f"🎙️ **النص المستخرج من الصوت:**\n{transcription}\n"
                 
-    # 6. المحادثة والردود العامة
+    # 6. المحادثة والردود العامة حسب الوضع المختار
     else:
         try:
-            sys_msg = "أنت برق الذكي، مساعد خارق ومتعدد المواهب بوضع الـ VIP. صانعك ومطورك الوحيد هو العبقري بارق تاج رأسك."
+            # اختيار السيرفر والنموذج والنص النظامي حسب الوضع
+            mode = st.session_state.ai_mode
+            selected_client = {
+                "general": client_general,
+                "games": client_games,
+                "code": client_code
+            }[mode]
+            
+            sys_msg = SYSTEM_PROMPTS[mode]
             if st.session_state.brq313_mode:
                 sys_msg += " وضع الأذونات الفائقة BRQ313 نشط بالكامل حالياً."
                 
-            chat_completion = client.chat.completions.create(
+            chat_completion = selected_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": user_content}],
                 temperature=0.7,
