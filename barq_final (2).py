@@ -8,6 +8,7 @@ import io
 from PIL import Image
 from datetime import datetime
 import tempfile
+from audio_recorder_streamlit import audio_recorder # مكتبة المايكروفون الجديدة
 
 # 1. إعدادات المتصفح والصفحة
 st.set_page_config(
@@ -59,7 +60,7 @@ client_code = Groq(api_key=API_KEY)     # السيرفر الثالث - الأك
 FILE_NAME = 'barq_final.py'
 BACKUP_NAME = 'barq_backup.py'
 
-# 3. إدارة الذاكرة وحالة المطور (مع تهيئة حقل النص بأمان)
+# 3. إدارة الذاكرة وحالة المطور
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "dev_mode" not in st.session_state:
@@ -71,10 +72,10 @@ if "ai_mode" not in st.session_state:
 if "text_input_box" not in st.session_state:
     st.session_state.text_input_box = ""
 
-# دالة كولباك لمسح وحفظ البيانات بأمان فور الضغط على الزر لمنع الأخطاء
-def clear_input_callback():
+# دالة Callback آمنة لحفظ المدخلات وتصفير الحقل لتجنب الانهيار والـ Error
+def handle_submit_callback():
     st.session_state["submitted_content"] = st.session_state.text_input_box
-    st.session_state.text_input_box = "" # تصفير الحقل بأمان هنا
+    st.session_state.text_input_box = "" # تفريغ الحقل بأمان
 
 # --- 🌟 قسم الإعلانات والدعم في الشريط الجانبي ---
 with st.sidebar:
@@ -271,16 +272,16 @@ for message in st.session_state.messages:
 st.divider()
 st.subheader("📤 مشاركة الوسائط والرسائل")
 
-media_tabs = st.tabs(["📝 النص", "📸 الصور", "🎙️ الصوت", "📹 الكاميرا"])
+media_tabs = st.tabs(["📝 النص", "📸 الصور", "🎙️ المايكروفون الحركي", "📹 الكاميرا"])
 
 image_file = None
 image_prompt = ""
-audio_file = None
+audio_recorded_bytes = None
 camera_photo = None
 
-# Tab 1: النص (تم ربطه بالـ key الافتراضي)
+# Tab 1: النص
 with media_tabs[0]:
-    st.text_area("اكتب رسالتك هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
+    text_input = st.text_area("اكتب رسالتك هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
 
 # Tab 2: الصور
 with media_tabs[1]:
@@ -288,10 +289,18 @@ with media_tabs[1]:
     image_file = st.file_uploader("اختر صورة للتحليل", type=["jpg", "jpeg", "png", "webp"], key="image_upload")
     image_prompt = st.text_input("السؤال الخاص بالصورة المرفوعة:", placeholder="ماذا ترى في هذه الصورة؟", key="img_prompt_box")
 
-# Tab 3: الصوت
+# Tab 3: المايكروفون الحركي والتسجيل المباشر
 with media_tabs[2]:
-    st.write("🎙️ **رفع المعطيات الصوتية**")
-    audio_file = st.file_uploader("اختر ملف صوتي للتحليل والتحويل ونطقه", type=["mp3", "wav", "ogg", "m4a"], key="audio_upload")
+    st.write("🎙️ **اضغط على زر المايك للتسجيل الحي والمباشر:**")
+    audio_recorded_bytes = audio_recorder(
+        text="اضغط للبدء بالتسجيل والتحدث 🎤",
+        recording_color="#e74c3c",
+        neutral_color="#34495e",
+        icon_size="2x"
+    )
+    if audio_recorded_bytes:
+        st.audio(audio_recorded_bytes, format="audio/wav")
+        st.success("✅ تم تسجيل صوتك بنجاح من المايكروفون!")
 
 # Tab 4: الكاميرا
 with media_tabs[3]:
@@ -301,28 +310,30 @@ with media_tabs[3]:
         camera_photo = st.camera_input("التقط الصورة 📸", key="camera_input_widget")
 
 # ==================== معالجة الإدخال ====================
-# تم ربط الزر بالـ Callback لتفريغ النص بأمان تام قبل عمل Rerun
-submit_button = st.button("🚀 إرسال المعطيات الحالية", use_container_width=True, type="primary", on_click=clear_input_callback)
+submit_button = st.button("🚀 إرسال المعطيات الحالية", use_container_width=True, type="primary", on_click=handle_submit_callback)
 
-# جلب النص الذي تم حفظه قبل المسح
-text_input = st.session_state.get("submitted_content", "")
+# استرجاع النص الآمن الذي تم ضخه من الـ callback
+text_input_extracted = st.session_state.get("submitted_content", "")
 
-if submit_button and (text_input or image_file or audio_file or camera_photo):
-    user_content = text_input if text_input else "تحليل المعطيات والوسائط المرفقة"
+if submit_button and (text_input_extracted or image_file or audio_recorded_bytes or camera_photo):
+    user_content = text_input_extracted if text_input_extracted else "تحليل المعطيات والوسائط المرفقة"
     
+    # تفريغ وسحق المحادثة القديمة ووضع الرسالة الجديدة الحالية فقط
     message_obj = {"role": "user", "content": user_content, "media": []}
     
+    # إضافة الصور المرفوعة
     if image_file and use_vision:
         image = Image.open(image_file)
         message_obj["media"].append({"type": "image", "data": image, "name": image_file.name})
     
+    # إضافة لقطة الكاميرا
     if camera_photo and use_vision:
         image = Image.open(camera_photo)
         message_obj["media"].append({"type": "image", "data": image, "name": "صورة حية من الكاميرا"})
     
-    if audio_file and use_audio:
-        audio_bytes = audio_file.read()
-        message_obj["media"].append({"type": "audio", "data": audio_bytes, "name": "ملف صوتي"})
+    # إضافة الصوت المباشر المسجل من المايكروفون
+    if audio_recorded_bytes and use_audio:
+        message_obj["media"].append({"type": "audio", "data": audio_recorded_bytes, "name": "تسجيل صوتي حي"})
         
     st.session_state.messages = [message_obj]
     
@@ -335,8 +346,7 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
         st.session_state.dev_mode = True
         res = "✅ **تم تفعيل الأذونات الفائقة BRQ313**\n\n🔓 الآن لديك صلاحية الوصول الكامل وتطوير الكود تلقائياً."
         st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-        if "submitted_content" in st.session_state:
-            st.session_state.submitted_content = ""
+        st.session_state["submitted_content"] = ""
         st.rerun()
     
     # 2. الأسئلة الخاصة بالمطور بارق
@@ -376,8 +386,7 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
                     f.write(new_code)
                 res = "⚡ **تم تعديل الكود بنجاح ذاتياً! سيعاد تشغيل التطبيق بالصيغة الجديدة...**"
                 st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-                if "submitted_content" in st.session_state:
-                    st.session_state.submitted_content = ""
+                st.session_state["submitted_content"] = ""
                 st.rerun()
             else:
                 res = "❌ فشل التعديل التلقائي: الكود الناتج غير مكتمل."
@@ -388,7 +397,7 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
     elif user_content.strip() in ANTI_INSULT:
         res = ANTI_INSULT[user_content.strip()]
     
-    # 5. معالجة الصور والأصوات
+    # 5. معالجة الصور والأصوات إن وجدت المعطيات
     elif message_obj["media"]:
         res = "🔄 **تم استلام المعطيات وتحليلها بنجاح عبر سيرفرات برق الحية:**\n\n"
         for media_item in message_obj["media"]:
@@ -406,7 +415,7 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
             
             elif media_item["type"] == "audio" and use_audio:
                 transcription = transcribe_audio_groq(media_item["data"], mode=st.session_state.ai_mode)
-                res += f"🎙️ **النص المستخرج من الصوت:**\n{transcription}\n"
+                res += f"🎙️ **النص المستخرج من الصوت وعبر المايك المباشر:**\n{transcription}\n"
                 
     # 6. المحادثة والردود العامة حسب الوضع المختار
     else:
@@ -432,10 +441,7 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
         except Exception as e:
             res = f"❌ خطأ في الاتصال بسيرفر برق الرئيسي: {str(e)}"
             
+    # حفظ رد المساعد
     st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-    
-    # تفريغ المتغير المساعد ليكون جاهزاً للرسالة التالية تماماً
-    if "submitted_content" in st.session_state:
-        st.session_state.submitted_content = ""
-        
-    st.rerun()
+    st.session_state["submitted_content"] = ""  
+    st.rerun()  # تحديث فوري بدون مشاكل
