@@ -59,7 +59,7 @@ client_code = Groq(api_key=API_KEY)     # السيرفر الثالث - الأك
 FILE_NAME = 'barq_final.py'
 BACKUP_NAME = 'barq_backup.py'
 
-# 3. إدارة الذاكرة وحالة المطور
+# 3. إدارة الذاكرة وحالة المطور (مع تهيئة حقل النص بأمان)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "dev_mode" not in st.session_state:
@@ -68,6 +68,13 @@ if "brq313_mode" not in st.session_state:
     st.session_state.brq313_mode = False
 if "ai_mode" not in st.session_state:
     st.session_state.ai_mode = "general"  # الوضع الافتراضي
+if "text_input_box" not in st.session_state:
+    st.session_state.text_input_box = ""
+
+# دالة كولباك لمسح وحفظ البيانات بأمان فور الضغط على الزر لمنع الأخطاء
+def clear_input_callback():
+    st.session_state["submitted_content"] = st.session_state.text_input_box
+    st.session_state.text_input_box = "" # تصفير الحقل بأمان هنا
 
 # --- 🌟 قسم الإعلانات والدعم في الشريط الجانبي ---
 with st.sidebar:
@@ -193,7 +200,6 @@ SYSTEM_PROMPTS = {
 def process_image_with_groq(image_base64, image_type, user_prompt, mode="general"):
     """معالجة الصورة مع Groq Vision حسب الوضع المختار"""
     try:
-        # اختيار العميل المناسب حسب الوضع
         selected_client = {
             "general": client_general,
             "games": client_games,
@@ -229,7 +235,6 @@ def process_image_with_groq(image_base64, image_type, user_prompt, mode="general
 def transcribe_audio_groq(audio_bytes_data, mode="general"):
     """تحويل الصوت إلى نص باستخدام ملف مؤقت آمن بالسيرفر حسب الوضع"""
     try:
-        # اختيار العميل المناسب حسب الوضع
         selected_client = {
             "general": client_general,
             "games": client_games,
@@ -268,16 +273,14 @@ st.subheader("📤 مشاركة الوسائط والرسائل")
 
 media_tabs = st.tabs(["📝 النص", "📸 الصور", "🎙️ الصوت", "📹 الكاميرا"])
 
-# هلال التبويبات لضمان عدم حدوث تداخل أو ظهور حقول بالخطأ
-text_input = ""
 image_file = None
 image_prompt = ""
 audio_file = None
 camera_photo = None
 
-# Tab 1: النص
+# Tab 1: النص (تم ربطه بالـ key الافتراضي)
 with media_tabs[0]:
-    text_input = st.text_area("اكتب رسالتك هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
+    st.text_area("اكتب رسالتك هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
 
 # Tab 2: الصور
 with media_tabs[1]:
@@ -290,7 +293,7 @@ with media_tabs[2]:
     st.write("🎙️ **رفع المعطيات الصوتية**")
     audio_file = st.file_uploader("اختر ملف صوتي للتحليل والتحويل ونطقه", type=["mp3", "wav", "ogg", "m4a"], key="audio_upload")
 
-# Tab 4: الكاميرا (حل مشكلة التشغيل المستمر لخصوصية المستخدم)
+# Tab 4: الكاميرا
 with media_tabs[3]:
     st.write("📹 **التقاط صورة حية**")
     enable_camera = st.checkbox("📸 تفعيل وتشغيل الكاميرا الآن", value=False, key="cam_toggle")
@@ -298,33 +301,31 @@ with media_tabs[3]:
         camera_photo = st.camera_input("التقط الصورة 📸", key="camera_input_widget")
 
 # ==================== معالجة الإدخال ====================
-submit_button = st.button("🚀 إرسال المعطيات الحالية", use_container_width=True, type="primary")
+# تم ربط الزر بالـ Callback لتفريغ النص بأمان تام قبل عمل Rerun
+submit_button = st.button("🚀 إرسال المعطيات الحالية", use_container_width=True, type="primary", on_click=clear_input_callback)
+
+# جلب النص الذي تم حفظه قبل المسح
+text_input = st.session_state.get("submitted_content", "")
 
 if submit_button and (text_input or image_file or audio_file or camera_photo):
     user_content = text_input if text_input else "تحليل المعطيات والوسائط المرفقة"
     
-    # تفريغ وسحق المحادثة القديمة ووضع الرسالة الجديدة الحالية فقط (طلبك الحتمي)
     message_obj = {"role": "user", "content": user_content, "media": []}
     
-    # إضافة الصور المرفوعة
     if image_file and use_vision:
         image = Image.open(image_file)
         message_obj["media"].append({"type": "image", "data": image, "name": image_file.name})
     
-    # إضافة لقطة الكاميرا
     if camera_photo and use_vision:
         image = Image.open(camera_photo)
         message_obj["media"].append({"type": "image", "data": image, "name": "صورة حية من الكاميرا"})
     
-    # إضافة الصوت المرفوع
     if audio_file and use_audio:
         audio_bytes = audio_file.read()
         message_obj["media"].append({"type": "audio", "data": audio_bytes, "name": "ملف صوتي"})
         
-    # استبدال السجل القديم بالكامل بالرسالة الحالية
     st.session_state.messages = [message_obj]
     
-    # معالجة رد الذكاء الاصطناعي برق
     p_clean = user_content.strip().lower()
     res = ""
     
@@ -334,7 +335,8 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
         st.session_state.dev_mode = True
         res = "✅ **تم تفعيل الأذونات الفائقة BRQ313**\n\n🔓 الآن لديك صلاحية الوصول الكامل وتطوير الكود تلقائياً."
         st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-        st.session_state.text_input_box = "" # تصفير النص
+        if "submitted_content" in st.session_state:
+            st.session_state.submitted_content = ""
         st.rerun()
     
     # 2. الأسئلة الخاصة بالمطور بارق
@@ -344,7 +346,7 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
                 res = response
                 break
     
-    # 3. نظام التعديل البرمجي الذاتي (عند تفعيل الأذونات)
+    # 3. نظام التعديل البرمجي الذاتي
     elif (any(word in p_clean for word in ["عدل الكود", "ضف ميزة", "غير الكود", "تعديل الكود", "حسّن الكود", "أصلح الكود"])
           and st.session_state.brq313_mode):
         try:
@@ -354,8 +356,8 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
                 f.write(current_code)
             
             sys_modify_prompt = """أنت خبير برمجة Python و Streamlit. مهمتك تعديل الكود الحالي بحسب طلب المستخدم.
-            شروط حتمية: حافظ على آلية الرمز السري 'brq313' وسيرة بارق المطور. أرجع الكود داخل بلوك يبدأ بـ ```python وينتهي بـ ```
-            """
+            شروط حتمية: حافظ على آلية الرمز السري 'brq313' وسيرة بارق المطور. أرجع الكود داخل بلوك يبدأ بـ ```python وينتهي بـ ```"""
+            
             response = client_code.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
@@ -374,7 +376,8 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
                     f.write(new_code)
                 res = "⚡ **تم تعديل الكود بنجاح ذاتياً! سيعاد تشغيل التطبيق بالصيغة الجديدة...**"
                 st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-                st.session_state.text_input_box = "" 
+                if "submitted_content" in st.session_state:
+                    st.session_state.submitted_content = ""
                 st.rerun()
             else:
                 res = "❌ فشل التعديل التلقائي: الكود الناتج غير مكتمل."
@@ -385,7 +388,7 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
     elif user_content.strip() in ANTI_INSULT:
         res = ANTI_INSULT[user_content.strip()]
     
-    # 5. معالجة الصور والأصوات إن وجدت المعطيات
+    # 5. معالجة الصور والأصوات
     elif message_obj["media"]:
         res = "🔄 **تم استلام المعطيات وتحليلها بنجاح عبر سيرفرات برق الحية:**\n\n"
         for media_item in message_obj["media"]:
@@ -408,7 +411,6 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
     # 6. المحادثة والردود العامة حسب الوضع المختار
     else:
         try:
-            # اختيار السيرفر والنموذج والنص النظامي حسب الوضع
             mode = st.session_state.ai_mode
             selected_client = {
                 "general": client_general,
@@ -430,7 +432,10 @@ if submit_button and (text_input or image_file or audio_file or camera_photo):
         except Exception as e:
             res = f"❌ خطأ في الاتصال بسيرفر برق الرئيسي: {str(e)}"
             
-    # حفظ رد المساعد وإعادة تحديث حقل الإدخال ليختفي النص القديم فوراً
     st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-    st.session_state.text_input_box = ""  # مسح النص برمجياً من الذاكرة للحقل
-    st.rerun()  # إعادة تشغيل فورية لتحديث الشاشة ومسح الحقول
+    
+    # تفريغ المتغير المساعد ليكون جاهزاً للرسالة التالية تماماً
+    if "submitted_content" in st.session_state:
+        st.session_state.submitted_content = ""
+        
+    st.rerun()
