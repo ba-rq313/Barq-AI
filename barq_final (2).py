@@ -6,12 +6,8 @@ import json
 import base64
 import io
 from PIL import Image
-import pyaudio
-import wave
-import numpy as np
 from datetime import datetime
 import tempfile
-import subprocess
 
 # 1. إعدادات المتصفح والصفحة
 st.set_page_config(
@@ -30,9 +26,6 @@ st.markdown("""
         margin: 10px 0;
         background-color: #f0f2f6;
     }
-    .voice-btn {
-        margin: 5px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -50,8 +43,6 @@ if "dev_mode" not in st.session_state:
     st.session_state.dev_mode = False
 if "brq313_mode" not in st.session_state:
     st.session_state.brq313_mode = False
-if "media_history" not in st.session_state:
-    st.session_state.media_history = []
 
 # --- 🌟 قسم الإعلانات والدعم في الشريط الجانبي ---
 with st.sidebar:
@@ -113,16 +104,11 @@ CREATOR_QUESTIONS = {
 
 # ==================== دوال معالجة الوسائط ====================
 
-def encode_image_to_base64(image_file):
-    """تحويل الصورة إلى Base64"""
-    image_data = image_file.read()
-    return base64.b64encode(image_data).decode('utf-8')
-
 def process_image_with_groq(image_base64, image_type, user_prompt):
-    """معالجة الصورة مع Groq Vision"""
+    """معالجة الصورة مع Groq Vision الحقيقي"""
     try:
         message = client.chat.completions.create(
-            model="llama-2-vision-90b",
+            model="llama-3.2-90b-vision-preview",
             messages=[
                 {
                     "role": "user",
@@ -147,60 +133,22 @@ def process_image_with_groq(image_base64, image_type, user_prompt):
     except Exception as e:
         return f"❌ خطأ في معالجة الصورة: {str(e)}"
 
-def transcribe_audio_groq(audio_file):
-    """تحويل الصوت إلى نص باستخدام Groq"""
+def transcribe_audio_groq(audio_bytes_data):
+    """تحويل الصوت إلى نص باستخدام ملف مؤقت آمن بالسيرفر"""
     try:
-        with open(audio_file, "rb") as f:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+            temp_audio.write(audio_bytes_data)
+            temp_audio_name = temp_audio.name
+        
+        with open(temp_audio_name, "rb") as f:
             transcript = client.audio.transcriptions.create(
                 file=f,
                 model="whisper-large-v3"
             )
+        os.unlink(temp_audio_name)
         return transcript.text
     except Exception as e:
         return f"❌ خطأ في تحويل الصوت: {str(e)}"
-
-def text_to_speech_groq(text):
-    """تحويل النص إلى صوت"""
-    try:
-        response = client.audio.speech.create(
-            model="tts-1",
-            voice="nova",
-            input=text
-        )
-        return response.content
-    except Exception as e:
-        st.error(f"❌ خطأ في تحويل النص إلى صوت: {str(e)}")
-        return None
-
-def record_audio(duration=10, sample_rate=16000):
-    """تسجيل الصوت من الميكروفون"""
-    try:
-        p = pyaudio.PyAudio()
-        stream = p.open(format=pyaudio.paFloat32, channels=1, rate=sample_rate, input=True, frames_per_buffer=1024)
-        
-        st.info(f"🎤 جاري التسجيل... ({duration} ثانية)")
-        frames = []
-        for _ in range(0, int(sample_rate / 1024 * duration)):
-            data = stream.read(1024)
-            frames.append(data)
-        
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        
-        audio_bytes = b''.join(frames)
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        
-        with wave.open(temp_file.name, 'wb') as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(p.get_sample_size(pyaudio.paFloat32))
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(audio_bytes)
-        
-        return temp_file.name
-    except Exception as e:
-        st.error(f"❌ خطأ في التسجيل: {str(e)}")
-        return None
 
 # ==================== عرض الرسائل السابقة ====================
 for message in st.session_state.messages:
@@ -216,9 +164,15 @@ for message in st.session_state.messages:
 
 # ==================== واجهة إدخال الوسائط المتقدمة ====================
 st.divider()
-st.subheader("📤 مشاركة الوسائط")
+st.subheader("📤 مشاركة الوسائط والرسائل")
 
 media_tabs = st.tabs(["📝 النص", "📸 الصور", "🎙️ الصوت", "📹 الكاميرا"])
+
+# تعريف المتغيرات الافتراضية لمنع الـ NameError
+image_file = None
+audio_file = None
+camera_photo = None
+image_prompt = ""
 
 # Tab 1: النص
 with media_tabs[0]:
@@ -233,17 +187,8 @@ with media_tabs[1]:
 # Tab 3: الصوت
 with media_tabs[2]:
     st.write("🎙️ **معالجة الصوت**")
-    audio_option = st.radio("اختر طريقة الإدخال الصوتي:", ["رفع ملف صوتي", "تسجيل مباشر"])
-    
-    if audio_option == "رفع ملف صوتي":
-        audio_file = st.file_uploader("اختر ملف صوتي", type=["mp3", "wav", "ogg", "m4a"], key="audio_upload")
-    else:
-        duration = st.slider("مدة التسجيل (ثانية):", 1, 30, 10)
-        if st.button("🔴 ابدأ التسجيل"):
-            recorded_file = record_audio(duration=duration)
-            if recorded_file:
-                audio_file = recorded_file
-                st.success("✅ تم التسجيل بنجاح!")
+    audio_file = st.file_uploader("اختر ملف صوتي (MP3/WAV)", type=["mp3", "wav", "ogg", "m4a"], key="audio_upload")
+    st.caption("ملاحظة: للتسجيل المباشر من الميكروفون أونلاين يفضل رفع الملف مباشرة هنا لضمان توافق السيرفر.")
 
 # Tab 4: الكاميرا
 with media_tabs[3]:
@@ -251,28 +196,24 @@ with media_tabs[3]:
     camera_photo = st.camera_input("التقط صورة 📸")
 
 # ==================== معالجة الإدخال ====================
-submit_button = st.button("🚀 إرسال", use_container_width=True, type="primary")
+submit_button = st.button("🚀 إرسال المعطيات", use_container_width=True, type="primary")
 
 if submit_button or text_input:
-    user_content = text_input or "تحليل الوسائط المرفقة"
+    user_content = text_input if text_input else "تحليل المعطيات والوسائط المرفقة"
     
     if user_content:
-        # إضافة الرسالة إلى السجل
         message_obj = {"role": "user", "content": user_content, "media": []}
         
-        # معالجة الصور
+        # معالجة رفع الصور
         if image_file and use_vision:
             image = Image.open(image_file)
-            image_bytes = io.BytesIO()
-            image.save(image_bytes, format=image_file.type.split('/')[-1].upper())
-            image_bytes.seek(0)
-            
             message_obj["media"].append({
                 "type": "image",
                 "data": image,
                 "name": image_file.name
             })
         
+        # معالجة الكاميرا
         if camera_photo and use_vision:
             image = Image.open(camera_photo)
             message_obj["media"].append({
@@ -281,19 +222,18 @@ if submit_button or text_input:
                 "name": "صورة من الكاميرا"
             })
         
-        # معالجة الصوت
+        # معالجة رفع الصوت
         if audio_file and use_audio:
-            with open(audio_file, "rb") as f:
-                audio_bytes = f.read()
+            audio_bytes = audio_file.read()
             message_obj["media"].append({
                 "type": "audio",
                 "data": audio_bytes,
-                "name": "رسالة صوتية"
+                "name": "رسالة صوتية مرفوعة"
             })
         
         st.session_state.messages.append(message_obj)
         
-        # عرض الرسالة
+        # عرض مدخلات المستخدم فوراً
         with st.chat_message("user", avatar="👤"):
             st.markdown(user_content)
             if message_obj["media"]:
@@ -303,12 +243,12 @@ if submit_button or text_input:
                     elif media_item["type"] == "audio":
                         st.audio(media_item["data"])
         
-        # معالجة الرد
+        # معالجة رد الذكاء الاصطناعي برق
         with st.chat_message("assistant", avatar="🤖"):
             p_clean = user_content.strip().lower()
             res = ""
             
-            # تفعيل وضع BRQ313
+            # 1. وضع الأذونات الفائقة
             if "brq313" in p_clean:
                 st.session_state.brq313_mode = True
                 st.session_state.dev_mode = True
@@ -317,7 +257,7 @@ if submit_button or text_input:
                 st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
                 st.rerun()
             
-            # أسئلة المبتكر
+            # 2. ردود المبتكر الآلية
             elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
                 for keyword, response in CREATOR_QUESTIONS.items():
                     if keyword in p_clean:
@@ -325,7 +265,7 @@ if submit_button or text_input:
                         break
                 st.markdown(res)
             
-            # طلبات تعديل الكود
+            # 3. تعديل الكود التلقائي (BRQ313 مفعّل)
             elif (any(word in p_clean for word in ["عدل الكود", "ضف ميزة", "غير الكود", "تعديل الكود", "حسّن الكود", "أصلح الكود"])
                   and st.session_state.brq313_mode):
                 
@@ -376,73 +316,46 @@ if submit_button or text_input:
                     res = f"❌ خطأ أثناء محاولة التعديل الذاتي: {str(e)}"
                     st.error(res)
             
-            # الإهانات
+            # 4. ردود الإهانات الدفاعية
             elif user_content.strip() in ANTI_INSULT:
                 res = ANTI_INSULT[user_content.strip()]
                 st.markdown(res)
             
-            # معالجة الوسائط
+            # 5. معالجة الوسائط (صور / صوت) المرفقة
             elif message_obj["media"]:
-                res = "🔄 جاري معالجة الوسائط...\n\n"
+                res = "🔄 **جاري تحليل الوسائط عبر سيرفرات برق الذكي...**\n\n"
                 
-                # معالجة الصور
                 for media_item in message_obj["media"]:
                     if media_item["type"] == "image" and use_vision:
-                        image_bytes = io.BytesIO()
-                        media_item["data"].save(image_bytes, format="PNG")
-                        image_base64 = base64.b64encode(image_bytes.getvalue()).decode('utf-8')
+                        image_bytes_io = io.BytesIO()
+                        media_item["data"].save(image_bytes_io, format="PNG")
+                        image_base64 = base64.b64encode(image_bytes_io.getvalue()).decode('utf-8')
                         
                         image_analysis = process_image_with_groq(
                             image_base64,
                             "image/png",
-                            image_prompt or user_content
+                            image_prompt if image_prompt else user_content
                         )
-                        res += f"\n📸 **تحليل الصورة:**\n{image_analysis}\n"
+                        res += f"📸 **تحليل الصورة المرفقة:**\n{image_analysis}\n"
                     
                     elif media_item["type"] == "audio" and use_audio:
-                        # حفظ الصوت مؤقتاً
-                        temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-                        temp_audio.write(media_item["data"])
-                        temp_audio.close()
-                        
-                        transcription = transcribe_audio_groq(temp_audio.name)
-                        res += f"\n🎙️ **نص الصوت:**\n{transcription}\n"
-                        
-                        os.unlink(temp_audio.name)
-                
-                # محادثة عادية
-                if res == "🔄 جاري معالجة الوسائط...\n\n":
-                    try:
-                        if st.session_state.brq313_mode:
-                            sys_msg = "أنت برق الذكي، مساعد ذكي متقدم بصلاحيات فائقة. تعامل مع الوسائط والنصوص بمحترفية."
-                        else:
-                            sys_msg = "أنت برق الذكي، مساعد ذكي متعدد المواهب يدعم الصور والصوت والنصوص."
-                        
-                        chat_completion = client.chat.completions.create(
-                            model="llama-3.3-70b-versatile",
-                            messages=[{"role": "system", "content": sys_msg}] +
-                                    [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[-10:]],
-                            temperature=0.7,
-                            max_tokens=2048
-                        )
-                        res = chat_completion.choices[0].message.content
-                    except Exception as e:
-                        res = f"❌ خطأ: {str(e)}"
+                        transcription = transcribe_audio_groq(media_item["data"])
+                        res += f"🎙️ **التحويل الصوتي إلى نص:**\n{transcription}\n"
                 
                 st.markdown(res)
             
-            # الحوار العادي
+            # 6. الحوار العادي بدون وسائط
             else:
                 try:
                     if st.session_state.brq313_mode:
-                        sys_msg = "أنت برق الذكي، مساعد ذكي متقدم بصلاحيات فائقة."
+                        sys_msg = "أنت برق الذكي، مساعد مبرمج خارق بوضع الأذونات الفائقة BRQ313. صانعك ومطورك الوحيد هو بارق العبقري تاج رأسك."
                     else:
                         sys_msg = "أنت برق الذكي، مساعد ذكي متعدد المواهب. مطورك وصانعك هو المبدع بارق."
                     
                     chat_completion = client.chat.completions.create(
                         model="llama-3.3-70b-versatile",
                         messages=[{"role": "system", "content": sys_msg}] +
-                                [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[-10:]],
+                                 [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[-10:]],
                         temperature=0.7,
                         max_tokens=2048
                     )
