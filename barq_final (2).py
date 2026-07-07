@@ -9,7 +9,7 @@ from PIL import Image
 from datetime import datetime
 import tempfile
 from audio_recorder_streamlit import audio_recorder
-import requests # مكتبة إضافية لاستقبال الصور المولدة
+import requests
 
 # 1. إعدادات المتصفح والصفحة الفائقة
 st.set_page_config(
@@ -27,7 +27,7 @@ st.markdown("""
     .mode-general { background-color: #e3f2fd; color: #1976d2; }
     .mode-games { background-color: #f3e5f5; color: #7b1fa2; }
     .mode-code { background-color: #e8f5e9; color: #388e3c; }
-    .mode-images { background-color: #fff8e1; color: #f57c00; } /* نمط جديد لخبير الصور */
+    .mode-images { background-color: #fff8e1; color: #f57c00; }
     .stButton>button { border-radius: 8px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
@@ -50,7 +50,7 @@ if "stats_images_analyzed" not in st.session_state:
 if "stats_audio_processed" not in st.session_state:
     st.session_state.stats_audio_processed = 0
 if "stats_images_generated" not in st.session_state:
-    st.session_state.stats_images_generated = 0 # عداد جديد للصور المولدة
+    st.session_state.stats_images_generated = 0
 
 # دالة Callback آمنة للتحكم في المدخلات وتجنب الأخطاء البرمجية للـ State
 def handle_submit_callback():
@@ -144,13 +144,12 @@ elif not st.session_state.logged_in:
 # ========================================================
 else:
     API_KEY = os.environ.get("GROQ_API_KEY", "")
-    HF_TOKEN = os.environ.get("HF_TOKEN", "") # مفتاح Hugging Face لإنشاء الصور (اختياري، يرجى ملؤه في GitHub Secrets)
+    HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
     client_general = Groq(api_key=API_KEY)
     client_games = Groq(api_key=API_KEY)
     client_code = Groq(api_key=API_KEY)
 
-    # قوالب النظام المتقدمة لجميع التخصصات
     SYSTEM_PROMPTS = {
         "general": "أنت برق الذكي، مساعد ذكي شامل. صانعك ومطورك الوحيد هو العبقري بارق. قدم معلومات دقيقة وعامة.",
         "games": "أنت برق الذكي، خبير الألعاب والتطبيقات. صانعك ومطورك هو بارق. ساعد المستخدم في الاستراتيجيات والنصائح المتقدمة.",
@@ -173,29 +172,32 @@ else:
         "من هو بارق": "👑 **بارق هو صانعي ومبتكري وتاج رأسي**، المطور العبقري الذي أعطاني هذا الذكاء! ⚡"
     }
 
-    # دالة لإنشاء الصور باستخدام Hugging Face Inference API (موديل Stable Diffusion جبار)
+    # دالة لإنشاء الصور باستخدام Hugging Face (تم التحديث لموديل مستقر)
     def generate_image(prompt):
         if not HF_TOKEN:
-            st.error("❌ عذراً! ميزة إنشاء الصور تتطلب مفتاح `HF_TOKEN` في GitHub Secrets للعمل.")
+            st.error("❌ عذراً! ميزة إنشاء الصور تتطلب مفتاح `HF_TOKEN` في Streamlit Secrets للعمل.")
             return None
         
-        API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5" # موديلStable Diffusion جبار
+        API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
         headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-        payload = {"inputs": prompt, "parameters": {"negative_prompt": "ugly, tiling, poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame, extra limbs, disfigured, deformed, body out of frame, blurry, bad anatomy, bad proportions, extra fingers, cloned face, distorted, text, error, watermark, username, signature, low quality, worst quality, realistic", "num_inference_steps": 50}} # معلمات لتحسين جودة التفاصيل
+        payload = {
+            "inputs": prompt, 
+            "parameters": {
+                "negative_prompt": "ugly, blurry, low quality, distorted, bad anatomy", 
+                "num_inference_steps": 30
+            }
+        }
 
         try:
-            with st.spinner("🔄 جاري إطلاق قدرات 'برق' لإنشاء صورة جبارة ودقيقة التفاصيل... (قد يستغرق دقائق قليلة للمرة الأولى)"):
-                response = requests.post(API_URL, headers=headers, json=payload, timeout=180)
+            with st.spinner("🔄 جاري إطلاق قدرات 'برق' لإنشاء صورة جبارة ودقيقة التفاصيل..."):
+                response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
                 if response.status_code == 200:
                     image_bytes = response.content
                     image = Image.open(io.BytesIO(image_bytes))
                     return image
                 else:
-                    st.error(f"❌ خطأ في الاتصال بسيرفر إنشاء الصور (HF API): كود الخطأ {response.status_code}. التفاصيل: {response.text}")
+                    st.error(f"❌ خطأ من خادم الصور: تأكد من صلاحيات الـ Token. كود الاستجابة: {response.status_code}")
                     return None
-        except requests.exceptions.Timeout:
-            st.error("❌ عذراً! انتهت مهلة الاتصال بسيرفر إنشاء الصور. يرجى المحاولة لاحقاً.")
-            return None
         except Exception as e:
             st.error(f"❌ حدث خطأ غير متوقع أثناء إنشاء الصورة: {str(e)}")
             return None
@@ -204,20 +206,17 @@ else:
     with st.sidebar:
         st.header("📊 لوحة التحكم والإحصائيات الحية")
         
-        # 1. حساب إجمالي الرسائل المرسلة في المحادثة
         total_msg = len([m for m in st.session_state.messages if m["role"] == "user"])
         st.metric(label="💬 عدد رسائل المستخدم المرسلة", value=total_msg)
         
-        # 2. عرض إحصائيات المرفقات وإنشاء الصور
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
             st.metric(label="📸 صور محللة", value=st.session_state.stats_images_analyzed)
         with col_s2:
             st.metric(label="🎙️ صوتيات", value=st.session_state.stats_audio_processed)
         with col_s3:
-            st.metric(label="✨ صور مولدة", value=st.session_state.stats_images_generated) # عداد جديد
+            st.metric(label="✨ صور مولدة", value=st.session_state.stats_images_generated)
             
-        # 3. مؤشر حالة النظام والسيرفر
         st.markdown("🌐 **حالة السيرفر:** `متصل ومستقر 🟢` ")
         st.markdown(f"🎯 **النمط الحالي:** `{st.session_state.ai_mode.upper()}`")
         
@@ -230,7 +229,6 @@ else:
         st.divider()
         
         st.header("🎯 الأوضاع المتاحة")
-        # تم إضافة الخيار الرابع هنا: ✨ خبير إنشاء الصور الاحترافية
         mode_option = st.radio(
             "اختر وضع الذكاء الاصطناعي الحالي:",
             options=["general", "games", "code", "images"],
@@ -264,7 +262,6 @@ else:
         "code": "💻 برق الذكي - خبير البرمجة والمطور الفائق",
         "images": "✨ برق الذكي - خبير إنشاء الصور الاحترافية والجبارة"
     }
-    # تطبيق الستايل الخاص للوضع المختار
     mode_class = f"mode-{st.session_state.ai_mode}"
     st.markdown(f"<h1 class='mode-badge {mode_class}'>{mode_titles[st.session_state.ai_mode]}</h1>", unsafe_allow_html=True)
     st.write("---")
@@ -283,7 +280,6 @@ else:
     # واجهة الإدخال والوسائط المتعددة المتقدمة
     st.subheader("📤 مشاركة الوسائط والرسائل الحية")
     
-    # تحديد التبويبات المتاحة بناءً على الوضع الحالي
     tab_titles = ["📝 النص والرسائل"]
     if st.session_state.ai_mode != "images":
         tab_titles.extend(["📸 رفع الصور", "🎙️ تسجيل المايكروفون", "📹 لقطة الكاميرا"])
@@ -315,15 +311,13 @@ else:
         
         if text_input_extracted or image_file or audio_recorded_bytes or camera_photo:
             
-            # 1. تنفيذ إنشاء الصور إذا كان النمط نشطاً
+            # 1. تنفيذ إنشاء الصور
             if st.session_state.ai_mode == "images" and text_input_extracted:
                 prompt_ar = text_input_extracted
                 
-                # إظهار رسالة المستخدم
                 user_msg = {"role": "user", "content": f"🎨 أريدك أن تنشئ صورة جبارة ودقيقة التفاصيل بناءً على هذا الوصف:\n**{prompt_ar}**", "media": []}
                 st.session_state.messages.append(user_msg)
                 
-                # ترجمة الوصف للإنجليزية (موديل Stable Diffusion يعمل بالإنجليزية)
                 try:
                     selected_client = client_general
                     completion = selected_client.chat.completions.create(
@@ -332,22 +326,21 @@ else:
                     )
                     prompt_en = completion.choices[0].message.content
                 except Exception as e:
-                    prompt_en = prompt_ar # إذا فشلت الترجمة، نستخدم النص العربي مباشرة
+                    prompt_en = prompt_ar
                 
-                # تنفيذ إنشاء الصورة
                 generated_image = generate_image(prompt_en)
                 
                 if generated_image:
                     ai_reply = "✅ **تم إنشاء الصورة الجبارة بنجاح!** لقد ركزت على أدق التفاصيل لتنافس الشركات العالمية."
                     st.session_state.messages.append({"role": "assistant", "content": ai_reply, "media": [{"type": "image", "data": generated_image}]})
-                    st.session_state.stats_images_generated += 1 # تحديث عداد الإحصائيات
+                    st.session_state.stats_images_generated += 1
                 else:
-                    st.session_state.messages.append({"role": "assistant", "content": "❌ عذراً! حدث خطأ أثناء إنشاء الصورة. يرجى مراجعة مفتاح الـ TOKEN أو المحاولة لاحقاً."})
+                    st.session_state.messages.append({"role": "assistant", "content": "❌ عذراً! حدث خطأ أثناء إنشاء الصورة. يرجى مراجعة صلاحيات مفتاح الـ TOKEN أو المحاولة لاحقاً."})
                 
                 st.session_state["submitted_content"] = ""
                 st.rerun()
 
-            # 2. تنفيذ معالجة الأوضاع النصية والوسائط الأخرى
+            # 2. تنفيذ الأوضاع الأخرى
             else:
                 user_content = text_input_extracted if text_input_extracted else "تحليل المعطيات والوسائط المرفقة"
                 message_obj = {"role": "user", "content": user_content, "media": []}
@@ -367,7 +360,6 @@ else:
                 p_clean = user_content.lower()
                 res = ""
                 
-                # التحقق من الردود الخاصة والرد الدفاعي
                 if user_content in ANTI_INSULT:
                     res = ANTI_INSULT[user_content]
                 elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
@@ -376,7 +368,6 @@ else:
                             res = response
                             break
                             
-                # استدعاء الموديل النصي المناسب
                 else:
                     try:
                         selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
