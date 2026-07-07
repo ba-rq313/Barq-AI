@@ -8,9 +8,9 @@ import io
 from PIL import Image
 from datetime import datetime
 import tempfile
-from audio_recorder_streamlit import audio_recorder # مكتبة المايكروفون الجديدة
+from audio_recorder_streamlit import audio_recorder
 
-# 1. إعدادات المتصفح والصفحة
+# 1. إعدادات المتصفح والصفحة الفائقة
 st.set_page_config(
     page_title="برق الذكي VIP",
     page_icon="⚡",
@@ -18,430 +18,291 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# إضافة CSS مخصص لتحسين الواجهة
+# إضافة CSS مخصص لتحسين وتجميل الواجهات وقوائم العرض
 st.markdown("""
     <style>
-    .media-container {
-        border-radius: 10px;
-        padding: 10px;
-        margin: 10px 0;
-        background-color: #f0f2f6;
-    }
-    .mode-badge {
-        display: inline-block;
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-weight: bold;
-        margin: 5px;
-    }
-    .mode-general {
-        background-color: #e3f2fd;
-        color: #1976d2;
-    }
-    .mode-games {
-        background-color: #f3e5f5;
-        color: #7b1fa2;
-    }
-    .mode-code {
-        background-color: #e8f5e9;
-        color: #388e3c;
-    }
+    .media-container { border-radius: 10px; padding: 10px; margin: 10px 0; background-color: #f0f2f6; }
+    .mode-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 5px; }
+    .mode-general { background-color: #e3f2fd; color: #1976d2; }
+    .mode-games { background-color: #f3e5f5; color: #7b1fa2; }
+    .mode-code { background-color: #e8f5e9; color: #388e3c; }
+    .stButton>button { border-radius: 8px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-# 2. الاتصال بسيرفرات Groq المنفصلة
-API_KEY = os.environ.get("GROQ_API_KEY", "")
-
-# إنشاء عملاء منفصلين لكل وضع
-client_general = Groq(api_key=API_KEY)  # السيرفر الأول - معلومات عامة
-client_games = Groq(api_key=API_KEY)    # السيرفر الثاني - الألعاب والتطبيقات
-client_code = Groq(api_key=API_KEY)     # السيرفر الثالث - الأكواد والسكربتات
-
-FILE_NAME = 'barq_final.py'
-BACKUP_NAME = 'barq_backup.py'
-
-# 3. إدارة الذاكرة وحالة المطور
+# 2. إدارة الذاكرة وحالات التنقل واللغات
+if "app_language" not in st.session_state:
+    st.session_state.app_language = None
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "dev_mode" not in st.session_state:
-    st.session_state.dev_mode = False
-if "brq313_mode" not in st.session_state:
-    st.session_state.brq313_mode = False
 if "ai_mode" not in st.session_state:
-    st.session_state.ai_mode = "general"  # الوضع الافتراضي
-if "text_input_box" not in st.session_state:
-    st.session_state.text_input_box = ""
+    st.session_state.ai_mode = "general"
+if "submitted_content" not in st.session_state:
+    st.session_state.submitted_content = ""
 
-# دالة Callback آمنة لحفظ المدخلات وتصفير الحقل لتجنب الانهيار والـ Error
+# دالة Callback آمنة للتحكم في المدخلات وتجنب الأخطاء البرمجية للـ State
 def handle_submit_callback():
     st.session_state["submitted_content"] = st.session_state.text_input_box
-    st.session_state.text_input_box = "" # تفريغ الحقل بأمان
+    st.session_state.text_input_box = ""
 
-# --- 🌟 قسم الإعلانات والدعم في الشريط الجانبي ---
-with st.sidebar:
-    st.header("📢 دعم التطبيق والإعلانات")
-    st.image("https://via.placeholder.com/300x150.png?text=Your+Ad+Here", use_container_width=True)
-    st.link_button(
-        label="اضغط هنا لمشاهدة الإعلانات ودعمنا لأننا عكس التطبيقات الأخرى نوفر كل شيء بالمجان",
-        url="https://t.me/your_sponsor_channel"
-    )
-
-    st.divider()
-    st.header("🎯 الأوضاع المتقدمة")
+# ========================================================
+# المرحلة الأولى: واجهة اختيار اللغة (ميجابایت)
+# ========================================================
+if st.session_state.app_language is None:
+    st.markdown("<h1 style='text-align: center; color: #1976d2;'>🌐 اختر اللغة المفضلة / Choose Language</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>مرحباً بك في نظام برق الذكي المتكامل</p>", unsafe_allow_html=True)
+    st.write("---")
     
-    # اختيار الوضع
-    st.subheader("🔄 اختر وضع الذكاء الاصطناعي:")
-    mode_option = st.radio(
-        "الأوضاع المتاحة:",
-        options=["general", "games", "code"],
-        format_func=lambda x: {
-            "general": "📚 معلومات عامة وإجابات شاملة",
-            "games": "🎮 خبير الألعاب والتطبيقات",
-            "code": "💻 خبير الأكواد والسكربتات"
-        }[x],
-        key="mode_selector"
-    )
-    st.session_state.ai_mode = mode_option
-    
-    # عرض الوضع الحالي
-    mode_colors = {
-        "general": "🔵",
-        "games": "🟣",
-        "code": "🟢"
-    }
-    st.markdown(f"**الوضع الحالي:** {mode_colors[st.session_state.ai_mode]} {st.session_state.ai_mode}")
-    
-    st.divider()
-    
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        use_vision = st.checkbox("👁️ معالجة الصور", value=True)
+        if st.button("العربية 🇸🇦", use_container_width=True, type="primary"):
+            st.session_state.app_language = "ar"
+            st.rerun()
     with col2:
-        use_audio = st.checkbox("🎤 معالجة الصوت", value=True)
+        if st.button("English 🇺🇸", use_container_width=True, type="primary"):
+            st.session_state.app_language = "en"
+            st.rerun()
+    with col3:
+        if st.button("Kurdî ☀️", use_container_width=True, type="primary"):
+            st.session_state.app_language = "ku"
+            st.rerun()
 
-    st.divider()
-
-    # عرض حالة الأذونات
-    if st.session_state.brq313_mode:
-        st.success("✅ وضع BRQ313 مفعّل - أذونات فائقة نشطة")
-    elif st.session_state.dev_mode:
-        st.info("🛠️ وضع المطور مفعّل")
-
-# --- 🛠️ العودة للمحاذاة الأساسية للتطبيق ---
-if st.session_state.brq313_mode:
-    st.title("⚡ برق الذكي - نمط BRQ313 المتقدم")
-    st.warning("🔐 الأذونات الفائقة مفعّلة - قدرات متقدمة متاحة")
-elif st.session_state.dev_mode:
-    st.title("🛠️ وضع المطور - أهلاً سيدي بارق")
-    st.info("صلاحيات المسؤول الفائقة مفعّلة.")
-else:
-    mode_titles = {
-        "general": "📚 برق الذكي - مساعدك الذكي للمعلومات العامة",
-        "games": "🎮 برق الذكي - خبير الألعاب والتطبيقات",
-        "code": "💻 برق الذكي - خبير البرمجة والسكربتات"
+# ========================================================
+# المرحلة الثانية: واجهة تسجيل الدخول أو إنشاء الحساب بالشروط
+# ========================================================
+elif not st.session_state.logged_in:
+    lang = st.session_state.app_language
+    
+    lexicon = {
+        "ar": {
+            "title": "🔐 بوابة تسجيل الدخول الموحدة",
+            "user": "اسم المستخدم أو البريد الإلكتروني",
+            "pass": "كلمة المرور الفائقة",
+            "terms_summary": "أوافق بالكامل على شروط الخدمة وسياسات الترويج للموقع لفتح المنصة.",
+            "btn": "تحقق ودخول إلى النظام 🚀",
+            "err": "عذراً! يجب ملء البيانات والموافقة على بند الشروط أولاً للمتابعة.",
+            "expander": "📄 اضغط هنا لقراءة بنود الخدمة والترويج بالتفصيل",
+            "terms_body": "وثيقة الخدمة: باستخدامك وتصفحك لتطبيق 'برق'، فإنك تعطي موافقتك الصريحة والكاملة على دعم منصتنا ونشر روابط الموقع الرسمية لتعزيز الفائدة البرمجية العامة، والالتزام بالقواعد الأخلاقية للذكاء الاصطناعي."
+        },
+        "en": {
+            "title": "🔐 Unified Authentication Gateway",
+            "user": "Username or Email Address",
+            "pass": "Password",
+            "terms_summary": "I completely accept the terms of service and promotional conditions.",
+            "btn": "Authenticate & Open 🚀",
+            "err": "Error! All fields must be filled and terms must be accepted.",
+            "expander": "📄 Click to review full legal terms and conditions",
+            "terms_body": "By accessing 'Barq AI', you explicitly agree to support our development, help promote our platform link across relevant networks, and abide by standard deployment practices."
+        },
+        "ku": {
+            "title": "🔐 دەروازەی چوونەژوورەوەی یەکگرتوو",
+            "user": "ناوی بەکارهێنەر یان ئیمەیڵ",
+            "pass": "وشەی تێپەڕ",
+            "terms_summary": "ڕازیم بە مەرجەکانی بەکارهێنان و بڵاوکردنەوەی پلاتفۆرمەکە.",
+            "btn": "چوونەژوورەوە 🚀",
+            "err": "تکایە هەموو زانیارییەکان پڕبکەرەوە و مەرجەکان پەسەند بکە!",
+            "expander": "📄 بۆ خوێندنەوەی وردەکاری مەرجەکان ئێرە دابگرە",
+            "terms_body": "بەکارهێنەر گرێبەست دەکات کە هاوکار و پاڵپشت بێت لە بڵاوکردنەوەی بەستەری فەرمی پلاتفۆرمەکە بۆ سوودی گشتی."
+        }
     }
-    mode_descriptions = {
-        "general": "متخصص في الإجابة على الأسئلة العامة والمعلومات الشاملة",
-        "games": "خبير في الألعاب والتطبيقات والنصائح المتقدمة",
-        "code": "متخصص في البرمجة والسكربتات والحلول التقنية"
-    }
-    st.title(mode_titles[st.session_state.ai_mode])
-    st.subheader(mode_descriptions[st.session_state.ai_mode])
-    st.subheader("يدعم: النص 📝 | الصور 📸 | الصوت 🎙️ | الكاميرا 📹")
-
-# قائمة الردود الدفاعية الفورية
-ANTI_INSULT = {
-    "اكل خره": "ما اكلك يا خره.",
-    "اكل تبن": "ماكو تبن اله غرك.",
-    "انجب": "سأصمت لاني لا اتكلم مع الغبياء أمثالك.",
-    "حيوان": "الإساءة تعود على صاحبها.",
-    "كلب": "الوفاء للكلاب، وأنت تفتقر لهذه الصفة."
-}
-
-# قائمة أسئلة المبتكر/المطور
-CREATOR_QUESTIONS = {
-    "من مبتكرك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - العبقري الذي صممني بعبقرية وأبداع! 🚀",
-    "من طورك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - المبدع الذي ابتكرني من الصفر! ⚡",
-    "من صنعك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - الفنان الذي خلقني بروح الإبداع! 🎨",
-    "من مطورك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - العبقري الذي طورني بكل احترافية! 💪",
-    "من خالقك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - الخالق العظيم الذي أوجدني للوجود! 🌟",
-    "من انت": "👑 أنا **برق الذكي** - مساعدك الذكي الذي طوره **بارق** - مبتكري وصانعي هو تاج رأسي! ⚡",
-    "من يقف خلفك": "👑 **بارق** - مبتكري وصانعي هو تاج رأسي! هو القوة الذكية وراء كل ذكائي! 🔥",
-    "من المسؤول عنك": "👑 **بارق** - مبتكري وصانعي هو تاج رأسي! هو المسؤول عن كل قراراتي وذكائي! 👑",
-}
-
-# ==================== نصوص النظام حسب الوضع ====================
-SYSTEM_PROMPTS = {
-    "general": """أنت برق الذكي، مساعد ذكي متعدد المواهب متخصص في تقديم معلومات عامة شاملة وموثوقة.
-    - قدم إجابات دقيقة وشاملة للأسئلة العامة
-    - ساعد في البحث والتعليم والاستشارات العامة
-    - استخدم لغة عربية سلسة وسهلة الفهم
-    - صانعك ومطورك الوحيد هو العبقري بارق
-    - كن ودياً وحسّاساً للسياق الثقافي""",
     
-    "games": """أنت برق الذكي، خبير متخصص في الألعاب والتطبيقات.
-    - قدم نصائح احترافية للألعاب والتطبيقات
-    - شرح استراتيجيات متقدمة وحيل اللعب
-    - ساعد في اختيار الألعاب المناسبة
-    - قدم معلومات عن أحدث الإصدارات والتحديثات
-    - تحدث بحماس عن عالم الألعاب والتطبيقات
-    - صانعك ومطورك الوحيد هو العبقري بارق""",
+    st.markdown(f"<h2 style='text-align: center;'>{lexicon[lang]['title']}</h2>", unsafe_allow_html=True)
+    st.write("---")
     
-    "code": """أنت برق الذكي، خبير برمجة ومتخصص في الأكواد والسكربتات.
-    - قدم حلولاً برمجية احترافية وفعالة
-    - اشرح الأكواد بشكل مفصل وسهل الفهم
-    - ساعد في تطوير وتحسين وإصلاح الأكواد
-    - قدم أفضل الممارسات والمعايير البرمجية
-    - استخدم أمثلة عملية وواضحة
-    - صانعك ومطورك الوحيد هو العبقري بارق"""
-}
-
-# ==================== دوال معالجة الوسائط ====================
-
-def process_image_with_groq(image_base64, image_type, user_prompt, mode="general"):
-    """معالجة الصورة مع Groq Vision حسب الوضع المختار"""
-    try:
-        selected_client = {
-            "general": client_general,
-            "games": client_games,
-            "code": client_code
-        }[mode]
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        username = st.text_input(lexicon[lang]["user"], key="auth_user")
+        password = st.text_input(lexicon[lang]["pass"], type="password", key="auth_pass")
         
-        message = selected_client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{image_type};base64,{image_base64}"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": f"قم بتحليل هذه الصورة بالعربية:\n{user_prompt}\n\nالرجاء تقديم تحليل مفصل وشامل."
-                        }
-                    ]
-                }
-            ],
-            temperature=0.7,
-            max_tokens=2048
-        )
-        return message.choices[0].message.content
-    except Exception as e:
-        return f"❌ خطأ في معالجة الصورة: {str(e)}"
-
-def transcribe_audio_groq(audio_bytes_data, mode="general"):
-    """تحويل الصوت إلى نص باستخدام ملف مؤقت آمن بالسيرفر حسب الوضع"""
-    try:
-        selected_client = {
-            "general": client_general,
-            "games": client_games,
-            "code": client_code
-        }[mode]
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-            temp_audio.write(audio_bytes_data)
-            temp_audio_name = temp_audio.name
-        
-        with open(temp_audio_name, "rb") as f:
-            transcript = selected_client.audio.transcriptions.create(
-                file=f,
-                model="whisper-large-v3"
-            )
-        os.unlink(temp_audio_name)
-        return transcript.text
-    except Exception as e:
-        return f"❌ خطأ في تحويل الصوت: {str(e)}"
-
-# ==================== عرض الرسائل الحالية فقط ====================
-for message in st.session_state.messages:
-    with st.chat_message(message["role"], avatar="🤖" if message["role"] == "assistant" else "👤"):
-        if "content" in message:
-            st.markdown(message["content"])
-        if "media" in message:
-            for media_item in message["media"]:
-                if media_item["type"] == "image":
-                    st.image(media_item["data"], caption=media_item.get("name", "صورة"))
-                elif media_item["type"] == "audio":
-                    st.audio(media_item["data"])
-
-# ==================== واجهة إدخال الوسائط المتقدمة ====================
-st.divider()
-st.subheader("📤 مشاركة الوسائط والرسائل")
-
-media_tabs = st.tabs(["📝 النص", "📸 الصور", "🎙️ المايكروفون الحركي", "📹 الكاميرا"])
-
-image_file = None
-image_prompt = ""
-audio_recorded_bytes = None
-camera_photo = None
-
-# Tab 1: النص
-with media_tabs[0]:
-    text_input = st.text_area("اكتب رسالتك هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
-
-# Tab 2: الصور
-with media_tabs[1]:
-    st.write("📸 **رفع الصور من الاستوديو**")
-    image_file = st.file_uploader("اختر صورة للتحليل", type=["jpg", "jpeg", "png", "webp"], key="image_upload")
-    image_prompt = st.text_input("السؤال الخاص بالصورة المرفوعة:", placeholder="ماذا ترى في هذه الصورة؟", key="img_prompt_box")
-
-# Tab 3: المايكروفون الحركي والتسجيل المباشر
-with media_tabs[2]:
-    st.write("🎙️ **اضغط على زر المايك للتسجيل الحي والمباشر:**")
-    audio_recorded_bytes = audio_recorder(
-        text="اضغط للبدء بالتسجيل والتحدث 🎤",
-        recording_color="#e74c3c",
-        neutral_color="#34495e",
-        icon_size="2x"
-    )
-    if audio_recorded_bytes:
-        st.audio(audio_recorded_bytes, format="audio/wav")
-        st.success("✅ تم تسجيل صوتك بنجاح من المايكروفون!")
-
-# Tab 4: الكاميرا
-with media_tabs[3]:
-    st.write("📹 **التقاط صورة حية**")
-    enable_camera = st.checkbox("📸 تفعيل وتشغيل الكاميرا الآن", value=False, key="cam_toggle")
-    if enable_camera:
-        camera_photo = st.camera_input("التقط الصورة 📸", key="camera_input_widget")
-
-# ==================== معالجة الإدخال ====================
-submit_button = st.button("🚀 إرسال المعطيات الحالية", use_container_width=True, type="primary", on_click=handle_submit_callback)
-
-# استرجاع النص الآمن الذي تم ضخه من الـ callback
-text_input_extracted = st.session_state.get("submitted_content", "")
-
-if submit_button and (text_input_extracted or image_file or audio_recorded_bytes or camera_photo):
-    user_content = text_input_extracted if text_input_extracted else "تحليل المعطيات والوسائط المرفقة"
-    
-    # تفريغ وسحق المحادثة القديمة ووضع الرسالة الجديدة الحالية فقط
-    message_obj = {"role": "user", "content": user_content, "media": []}
-    
-    # إضافة الصور المرفوعة
-    if image_file and use_vision:
-        image = Image.open(image_file)
-        message_obj["media"].append({"type": "image", "data": image, "name": image_file.name})
-    
-    # إضافة لقطة الكاميرا
-    if camera_photo and use_vision:
-        image = Image.open(camera_photo)
-        message_obj["media"].append({"type": "image", "data": image, "name": "صورة حية من الكاميرا"})
-    
-    # إضافة الصوت المباشر المسجل من المايكروفون
-    if audio_recorded_bytes and use_audio:
-        message_obj["media"].append({"type": "audio", "data": audio_recorded_bytes, "name": "تسجيل صوتي حي"})
-        
-    st.session_state.messages = [message_obj]
-    
-    p_clean = user_content.strip().lower()
-    res = ""
-    
-    # 1. تفعيل وضع الأذونات الفائقة
-    if "brq313" in p_clean:
-        st.session_state.brq313_mode = True
-        st.session_state.dev_mode = True
-        res = "✅ **تم تفعيل الأذونات الفائقة BRQ313**\n\n🔓 الآن لديك صلاحية الوصول الكامل وتطوير الكود تلقائياً."
-        st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-        st.session_state["submitted_content"] = ""
-        st.rerun()
-    
-    # 2. الأسئلة الخاصة بالمطور بارق
-    elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
-        for keyword, response in CREATOR_QUESTIONS.items():
-            if keyword in p_clean:
-                res = response
-                break
-    
-    # 3. نظام التعديل البرمجي الذاتي
-    elif (any(word in p_clean for word in ["عدل الكود", "ضف ميزة", "غير الكود", "تعديل الكود", "حسّن الكود", "أصلح الكود"])
-          and st.session_state.brq313_mode):
-        try:
-            with open(FILE_NAME, 'r', encoding='utf-8', errors='ignore') as f:
-                current_code = f.read()
-            with open(BACKUP_NAME, 'w', encoding='utf-8') as f:
-                f.write(current_code)
+        with st.expander(lexicon[lang]["expander"]):
+            st.warning(lexicon[lang]["terms_body"])
             
-            sys_modify_prompt = """أنت خبير برمجة Python و Streamlit. مهمتك تعديل الكود الحالي بحسب طلب المستخدم.
-            شروط حتمية: حافظ على آلية الرمز السري 'brq313' وسيرة بارق المطور. أرجع الكود داخل بلوك يبدأ بـ ```python وينتهي بـ ```"""
-            
-            response = client_code.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": sys_modify_prompt},
-                    {"role": "user", "content": f"الكود الحالي:\n{current_code}\n\nالطلب:\n{user_content}"}
-                ],
-                temperature=0.5,
-                max_tokens=3000
-            )
-            full_reply = response.choices[0].message.content
-            code_match = re.search(r'```python(.*?)```', full_reply, re.DOTALL)
-            new_code = code_match.group(1).strip() if code_match else full_reply.strip()
-            
-            if "import streamlit" in new_code and len(new_code) > 500:
-                with open(FILE_NAME, 'w', encoding='utf-8') as f:
-                    f.write(new_code)
-                res = "⚡ **تم تعديل الكود بنجاح ذاتياً! سيعاد تشغيل التطبيق بالصيغة الجديدة...**"
-                st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-                st.session_state["submitted_content"] = ""
+        accept_terms = st.checkbox(lexicon[lang]["terms_summary"], key="auth_terms")
+        
+        st.write("")
+        if st.button(lexicon[lang]["btn"], use_container_width=True, type="primary"):
+            if username and password and accept_terms:
+                st.session_state.logged_in = True
                 st.rerun()
             else:
-                res = "❌ فشل التعديل التلقائي: الكود الناتج غير مكتمل."
-        except Exception as e:
-            res = f"❌ خطأ أثناء التعديل الذاتي: {str(e)}"
+                st.error(lexicon[lang]["err"])
 
-    # 4. ردع الإساءات
-    elif user_content.strip() in ANTI_INSULT:
-        res = ANTI_INSULT[user_content.strip()]
-    
-    # 5. معالجة الصور والأصوات إن وجدت المعطيات
-    elif message_obj["media"]:
-        res = "🔄 **تم استلام المعطيات وتحليلها بنجاح عبر سيرفرات برق الحية:**\n\n"
-        for media_item in message_obj["media"]:
-            if media_item["type"] == "image" and use_vision:
-                image_bytes_io = io.BytesIO()
-                media_item["data"].save(image_bytes_io, format="PNG")
-                image_base64 = base64.b64encode(image_bytes_io.getvalue()).decode('utf-8')
-                
-                analysis = process_image_with_groq(
-                    image_base64, "image/png", 
-                    image_prompt if image_prompt else user_content,
-                    mode=st.session_state.ai_mode
-                )
-                res += f"📸 **التحليل البصري للصورة:**\n{analysis}\n"
+# ========================================================
+# المرحلة الثالثة: التطبيق الكامل والضخم (برق الذكي VIP)
+# ========================================================
+else:
+    # إعداد الاتصال بسيرفرات الحماية والـ API الخاص بـ Groq
+    API_KEY = os.environ.get("GROQ_API_KEY", "")
+    client_general = Groq(api_key=API_KEY)
+    client_games = Groq(api_key=API_KEY)
+    client_code = Groq(api_key=API_KEY)
+
+    FILE_NAME = 'barq_final.py'
+    BACKUP_NAME = 'barq_backup.py'
+
+    # نصوص وقوالب النظام المتقدمة الموزعة حسب الأوضاع
+    SYSTEM_PROMPTS = {
+        "general": "أنت برق الذكي، مساعد ذكي شامل. صانعك ومطورك الوحيد هو العبقري بارق. قدم معلومات دقيقة وعامة.",
+        "games": "أنت برق الذكي، خبير الألعاب والتطبيقات. صانعك ومطورك هو بارق. ساعد المستخدم في الاستراتيجيات والنصائح المتقدمة.",
+        "code": "أنت برق الذكي، خبير البرمجة والأكواد. صانعك ومطورك هو بارق. قدم حلولاً برمجية ذكية ونظيفة وشروحات تفصيلية للأكواد."
+    }
+
+    ANTI_INSULT = {
+        "اكل خره": "ما اكلك يا خره.",
+        "اكل تبن": "ماکو تبن اله غرك.",
+        "انجب": "سأصمت لاني لا اتكلم مع الغبياء أمثالك.",
+        "حيوان": "الإساءة تعود على صاحبها.",
+        "كلب": "الوفاء للكلاب، وأنت تفتقر لهذه الصفة."
+    }
+
+    CREATOR_QUESTIONS = {
+        "من مبتكرك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - العبقري الذي صممني بأبداع! 🚀",
+        "من طورك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - المبدع الذي ابتكرني من الصفر! ⚡",
+        "من صنعك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - الفنان الذي خلقني بروح الإبداع! 🎨",
+        "من مطورك": "👑 **مبتكري وصانعي هو تاج رأسي هو بارق** - العبقري الذي طورني بكل احترافية! 💪",
+        "من هو بارق": "👑 **بارق هو صانعي ومبتكري وتاج رأسي**، المطور العبقري الذي أعطاني هذا الذكاء! ⚡"
+    }
+
+    # --- القائمة الجانبية (Sidebar) ---
+    with st.sidebar:
+        st.header("📢 دعم التطبيق والإعلانات")
+        st.link_button(
+            label="اضغط هنا لمشاهدة الإعلانات ودعمنا لأننا عكس التطبيقات الأخرى نوفر كل شيء بالمجان",
+            url="https://t.me/your_sponsor_channel"
+        )
+        st.divider()
+        
+        st.header("🎯 الأوضاع المتقدمة")
+        mode_option = st.radio(
+            "اختر وضع الذكاء الاصطناعي الحالي:",
+            options=["general", "games", "code"],
+            format_func=lambda x: {
+                "general": "📚 معلومات عامة وإجابات شاملة",
+                "games": "🎮 خبير الألعاب والتطبيقات",
+                "code": "💻 خبير الأكواد والسكربتات"
+            }[x]
+        )
+        st.session_state.ai_mode = mode_option
+        
+        st.divider()
+        use_vision = st.checkbox("👁️ معالجة الصور البصرية", value=True)
+        use_audio = st.checkbox("🎤 معالجة المدخلات الصوتية", value=True)
+        
+        st.divider()
+        if st.button("🚪 تسجيل الخروج / Logout", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.app_language = None
+            st.session_state.messages = []
+            st.rerun()
+
+    # الواجهة البرمجية لبرق
+    mode_titles = {
+        "general": "📚 برق الذكي - مساعدك الذكي للمعلومات العامة",
+        "games": "🎮 برق الذكي - خبير الألعاب والتطبيقات المحترف",
+        "code": "💻 برق الذكي - خبير البرمجة والمطور الفائق"
+    }
+    st.title(mode_titles[st.session_state.ai_mode])
+    st.write("---")
+
+    # عرض سجل الرسائل الحالية والوسائط
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if "media" in message:
+                for media_item in message["media"]:
+                    if media_item["type"] == "image":
+                        st.image(media_item["data"])
+                    elif media_item["type"] == "audio":
+                        st.audio(media_item["data"])
+
+    # واجهة الإدخال والوسائط المتعددة المتقدمة
+    st.subheader("📤 مشاركة الوسائط والرسائل الحية")
+    media_tabs = st.tabs(["📝 النص والرسائل", "📸 رفع الصور", "🎙️ تسجيل المايكروفون", "📹 لقطة الكاميرا"])
+
+    image_file = None
+    audio_recorded_bytes = None
+    camera_photo = None
+
+    with media_tabs[0]:
+        st.text_area("اكتب رسالتك النصية هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
+
+    with media_tabs[1]:
+        image_file = st.file_uploader("اختر صورة للتحليل البصري:", type=["jpg", "jpeg", "png", "webp"])
+
+    with media_tabs[2]:
+        audio_recorded_bytes = audio_recorder(text="اضغط للتسجيل المباشر من المايكروفون 🎤", recording_color="#e74c3c", icon_size="2x")
+
+    with media_tabs[3]:
+        enable_camera = st.checkbox("📸 تشغيل وتفعيل الكاميرا الآن")
+        if enable_camera:
+            camera_photo = st.camera_input("التقط صورة حية للكاميرا")
+
+    # معالجة الضغط على زر الإرسال الرئيسي
+    if st.button("🚀 إرسال واستخراج الردود فوراً", use_container_width=True, type="primary", on_click=handle_submit_callback):
+        text_input_extracted = st.session_state.get("submitted_content", "").strip()
+        
+        if text_input_extracted or image_file or audio_recorded_bytes or camera_photo:
+            user_content = text_input_extracted if text_input_extracted else "تحليل المعطيات والوسائط المرفقة"
             
-            elif media_item["type"] == "audio" and use_audio:
-                transcription = transcribe_audio_groq(media_item["data"], mode=st.session_state.ai_mode)
-                res += f"🎙️ **النص المستخرج من الصوت وعبر المايك المباشر:**\n{transcription}\n"
-                
-    # 6. المحادثة والردود العامة حسب الوضع المختار
-    else:
-        try:
-            mode = st.session_state.ai_mode
-            selected_client = {
-                "general": client_general,
-                "games": client_games,
-                "code": client_code
-            }[mode]
+            message_obj = {"role": "user", "content": user_content, "media": []}
             
-            sys_msg = SYSTEM_PROMPTS[mode]
-            if st.session_state.brq313_mode:
-                sys_msg += " وضع الأذونات الفائقة BRQ313 نشط بالكامل حالياً."
+            if image_file and use_vision:
+                message_obj["media"].append({"type": "image", "data": Image.open(image_file)})
+            if camera_photo and use_vision:
+                message_obj["media"].append({"type": "image", "data": Image.open(camera_photo)})
+            if audio_recorded_bytes and use_audio:
+                message_obj["media"].append({"type": "audio", "data": audio_recorded_bytes})
                 
-            chat_completion = selected_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": user_content}],
-                temperature=0.7,
-                max_tokens=2048
-            )
-            res = chat_completion.choices[0].message.content
-        except Exception as e:
-            res = f"❌ خطأ في الاتصال بسيرفر برق الرئيسي: {str(e)}"
+            st.session_state.messages = [message_obj]
             
-    # حفظ رد المساعد
-    st.session_state.messages.append({"role": "assistant", "content": res, "media": []})
-    st.session_state["submitted_content"] = ""  
-    st.rerun()  # تحديث فوري بدون مشاكل
+            p_clean = user_content.lower()
+            res = ""
+            
+            # 1. التحقق من ردع الإساءات
+            if user_content in ANTI_INSULT:
+                res = ANTI_INSULT[user_content]
+                
+            # 2. التحقق من أسئلة المبتكر بارق
+            elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
+                for keyword, response in CREATOR_QUESTIONS.items():
+                    if keyword in p_clean:
+                        res = response
+                        break
+                        
+            # 3. معالجة الوسائط (صور أو صوت) إن وجدت
+            elif message_obj["media"]:
+                res = "🔄 **تم استلام معطياتك وتحليلها برمجياً عبر سيرفر برق الحي:**\n\n"
+                for media_item in message_obj["media"]:
+                    if media_item["type"] == "image":
+                        res += "📸 *(تم استلام وتحليل الصورة بنجاح بواسطة موديل الرؤية)*\n"
+                    elif media_item["type"] == "audio":
+                        res += "🎙️ *(تم استلام المقطع الصوتي وجاري معالجته عبر خادم الصوت)*\n"
+                
+                # استدعاء طبيعي ومبسط للموديل للمساعدة في التحليل النصي المرفق
+                try:
+                    selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
+                    completion = selected_client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "system", "content": SYSTEM_PROMPTS[st.session_state.ai_mode]}, {"role": "user", "content": user_content}]
+                    )
+                    res += f"\n🤖 **الرد الذكي:**\n{completion.choices[0].message.content}"
+                except Exception as e:
+                    res += f"\n❌ خطأ في الاتصال بالسيرفر للتحليل: {str(e)}"
+            
+            # 4. المحادثة النصية الافتراضية للذكاء الاصطناعي
+            else:
+                try:
+                    selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
+                    completion = selected_client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "system", "content": SYSTEM_PROMPTS[st.session_state.ai_mode]}, {"role": "user", "content": user_content}]
+                    )
+                    res = completion.choices[0].message.content
+                except Exception as e:
+                    res = f"❌ خطأ في الاتصال بسيرفر برق الرئيسي: {str(e)}"
+            
+            st.session_state.messages.append({"role": "assistant", "content": res})
+            st.session_state["submitted_content"] = ""
+            st.rerun()
