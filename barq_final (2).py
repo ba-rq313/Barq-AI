@@ -172,18 +172,18 @@ else:
         "من هو بارق": "👑 **بارق هو صانعي ومبتكري وتاج رأسي**، المطور العبقري الذي أعطاني هذا الذكاء! ⚡"
     }
 
-    # دالة لإنشاء الصور باستخدام Hugging Face (تم التحديث لموديل مستقر)
+    # دالة توليد الصور المحدثة بالكامل والمستقرة والمقاومة لمشاكل الصلاحيات المتقلبة
     def generate_image(prompt):
         if not HF_TOKEN:
             st.error("❌ عذراً! ميزة إنشاء الصور تتطلب مفتاح `HF_TOKEN` في Streamlit Secrets للعمل.")
             return None
         
-        API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        API_URL = "https://api-inference.huggingface.co/models/SG161222/Realistic_Vision_V4.0_noVAE"
+        headers = {"Authorization": f"Bearer {HF_TOKEN.strip()}"}
         payload = {
             "inputs": prompt, 
             "parameters": {
-                "negative_prompt": "ugly, blurry, low quality, distorted, bad anatomy", 
+                "negative_prompt": "ugly, blurry, low quality, distorted, bad anatomy, deformed, watermark", 
                 "num_inference_steps": 30
             }
         }
@@ -191,12 +191,17 @@ else:
         try:
             with st.spinner("🔄 جاري إطلاق قدرات 'برق' لإنشاء صورة جبارة ودقيقة التفاصيل..."):
                 response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+                
+                if response.status_code == 503:
+                    st.warning("⏳ السيرفر يقوم بتحميل الموديل حالياً، انتظر ثوانٍ معدودة ثم أعد الضغط على إرسال.")
+                    return None
+                    
                 if response.status_code == 200:
                     image_bytes = response.content
                     image = Image.open(io.BytesIO(image_bytes))
                     return image
                 else:
-                    st.error(f"❌ خطأ من خادم الصور: تأكد من صلاحيات الـ Token. كود الاستجابة: {response.status_code}")
+                    st.error(f"❌ خطأ من السيرفر (كود {response.status_code}): يرجى إعادة المحاولة أو التحقق من إعادة تشغيل التطبيق (Rerun).")
                     return None
         except Exception as e:
             st.error(f"❌ حدث خطأ غير متوقع أثناء إنشاء الصورة: {str(e)}")
