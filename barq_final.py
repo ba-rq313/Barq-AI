@@ -172,7 +172,7 @@ else:
         "من هو بارق": "👑 **بارق هو صانعي ومبتكري وتاج رأسي**، المطور العبقري الذي أعطاني هذا الذكاء! ⚡"
     }
 
-    # دالة توليد الصور المحدثة بالكامل والمستقرة والمقاومة لمشاكل الصلاحيات المتقلبة
+    # دالة توليد الصور المحدثة والمستقرة جداً
     def generate_image(prompt):
         if not HF_TOKEN:
             st.error("❌ عذراً! ميزة إنشاء الصور تتطلب مفتاح `HF_TOKEN` في Streamlit Secrets للعمل.")
@@ -201,7 +201,7 @@ else:
                     image = Image.open(io.BytesIO(image_bytes))
                     return image
                 else:
-                    st.error(f"❌ خطأ من السيرفر (كود {response.status_code}): يرجى إعادة المحاولة أو التحقق من إعادة تشغيل التطبيق (Rerun).")
+                    st.error(f"❌ خطأ من السيرفر (كود {response.status_code}): يرجى إعادة المحاولة أو التحقق من الـ Token.")
                     return None
         except Exception as e:
             st.error(f"❌ حدث خطأ غير متوقع أثناء إنشاء الصورة: {str(e)}")
