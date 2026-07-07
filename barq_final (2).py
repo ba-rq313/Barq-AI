@@ -9,6 +9,7 @@ from PIL import Image
 from datetime import datetime
 import tempfile
 from audio_recorder_streamlit import audio_recorder
+import requests # مكتبة إضافية لاستقبال الصور المولدة
 
 # 1. إعدادات المتصفح والصفحة الفائقة
 st.set_page_config(
@@ -23,6 +24,10 @@ st.markdown("""
     <style>
     .media-container { border-radius: 10px; padding: 10px; margin: 10px 0; background-color: #f0f2f6; }
     .mode-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 5px; }
+    .mode-general { background-color: #e3f2fd; color: #1976d2; }
+    .mode-games { background-color: #f3e5f5; color: #7b1fa2; }
+    .mode-code { background-color: #e8f5e9; color: #388e3c; }
+    .mode-images { background-color: #fff8e1; color: #f57c00; } /* نمط جديد لخبير الصور */
     .stButton>button { border-radius: 8px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
@@ -40,10 +45,12 @@ if "submitted_content" not in st.session_state:
     st.session_state.submitted_content = ""
 
 # عدادات الإحصائيات الحية للوحة التحكم
-if "stats_images" not in st.session_state:
-    st.session_state.stats_images = 0
-if "stats_audio" not in st.session_state:
-    st.session_state.stats_audio = 0
+if "stats_images_analyzed" not in st.session_state:
+    st.session_state.stats_images_analyzed = 0
+if "stats_audio_processed" not in st.session_state:
+    st.session_state.stats_audio_processed = 0
+if "stats_images_generated" not in st.session_state:
+    st.session_state.stats_images_generated = 0 # عداد جديد للصور المولدة
 
 # دالة Callback آمنة للتحكم في المدخلات وتجنب الأخطاء البرمجية للـ State
 def handle_submit_callback():
@@ -137,10 +144,13 @@ elif not st.session_state.logged_in:
 # ========================================================
 else:
     API_KEY = os.environ.get("GROQ_API_KEY", "")
+    HF_TOKEN = os.environ.get("HF_TOKEN", "") # مفتاح Hugging Face لإنشاء الصور (اختياري، يرجى ملؤه في GitHub Secrets)
+
     client_general = Groq(api_key=API_KEY)
     client_games = Groq(api_key=API_KEY)
     client_code = Groq(api_key=API_KEY)
 
+    # قوالب النظام المتقدمة لجميع التخصصات
     SYSTEM_PROMPTS = {
         "general": "أنت برق الذكي، مساعد ذكي شامل. صانعك ومطورك الوحيد هو العبقري بارق. قدم معلومات دقيقة وعامة.",
         "games": "أنت برق الذكي، خبير الألعاب والتطبيقات. صانعك ومطورك هو بارق. ساعد المستخدم في الاستراتيجيات والنصائح المتقدمة.",
@@ -163,6 +173,33 @@ else:
         "من هو بارق": "👑 **بارق هو صانعي ومبتكري وتاج رأسي**، المطور العبقري الذي أعطاني هذا الذكاء! ⚡"
     }
 
+    # دالة لإنشاء الصور باستخدام Hugging Face Inference API (موديل Stable Diffusion جبار)
+    def generate_image(prompt):
+        if not HF_TOKEN:
+            st.error("❌ عذراً! ميزة إنشاء الصور تتطلب مفتاح `HF_TOKEN` في GitHub Secrets للعمل.")
+            return None
+        
+        API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5" # موديلStable Diffusion جبار
+        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        payload = {"inputs": prompt, "parameters": {"negative_prompt": "ugly, tiling, poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame, extra limbs, disfigured, deformed, body out of frame, blurry, bad anatomy, bad proportions, extra fingers, cloned face, distorted, text, error, watermark, username, signature, low quality, worst quality, realistic", "num_inference_steps": 50}} # معلمات لتحسين جودة التفاصيل
+
+        try:
+            with st.spinner("🔄 جاري إطلاق قدرات 'برق' لإنشاء صورة جبارة ودقيقة التفاصيل... (قد يستغرق دقائق قليلة للمرة الأولى)"):
+                response = requests.post(API_URL, headers=headers, json=payload, timeout=180)
+                if response.status_code == 200:
+                    image_bytes = response.content
+                    image = Image.open(io.BytesIO(image_bytes))
+                    return image
+                else:
+                    st.error(f"❌ خطأ في الاتصال بسيرفر إنشاء الصور (HF API): كود الخطأ {response.status_code}. التفاصيل: {response.text}")
+                    return None
+        except requests.exceptions.Timeout:
+            st.error("❌ عذراً! انتهت مهلة الاتصال بسيرفر إنشاء الصور. يرجى المحاولة لاحقاً.")
+            return None
+        except Exception as e:
+            st.error(f"❌ حدث خطأ غير متوقع أثناء إنشاء الصورة: {str(e)}")
+            return None
+
     # --- القائمة الجانبية (Sidebar) مع لوحة التحكم الإحصائية تفاعلياً ---
     with st.sidebar:
         st.header("📊 لوحة التحكم والإحصائيات الحية")
@@ -171,12 +208,14 @@ else:
         total_msg = len([m for m in st.session_state.messages if m["role"] == "user"])
         st.metric(label="💬 عدد رسائل المستخدم المرسلة", value=total_msg)
         
-        # 2. عرض إحصائيات المرفقات
-        col_s1, col_s2 = st.columns(2)
+        # 2. عرض إحصائيات المرفقات وإنشاء الصور
+        col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
-            st.metric(label="📸 صور محللة", value=st.session_state.stats_images)
+            st.metric(label="📸 صور محللة", value=st.session_state.stats_images_analyzed)
         with col_s2:
-            st.metric(label="🎙️ مقاطع صوتية", value=st.session_state.stats_audio)
+            st.metric(label="🎙️ صوتيات", value=st.session_state.stats_audio_processed)
+        with col_s3:
+            st.metric(label="✨ صور مولدة", value=st.session_state.stats_images_generated) # عداد جديد
             
         # 3. مؤشر حالة النظام والسيرفر
         st.markdown("🌐 **حالة السيرفر:** `متصل ومستقر 🟢` ")
@@ -191,13 +230,15 @@ else:
         st.divider()
         
         st.header("🎯 الأوضاع المتاحة")
+        # تم إضافة الخيار الرابع هنا: ✨ خبير إنشاء الصور الاحترافية
         mode_option = st.radio(
             "اختر وضع الذكاء الاصطناعي الحالي:",
-            options=["general", "games", "code"],
+            options=["general", "games", "code", "images"],
             format_func=lambda x: {
                 "general": "📚 معلومات عامة وإجابات شاملة",
                 "games": "🎮 خبير الألعاب والتطبيقات",
-                "code": "💻 خبير الأكواد والسكربتات"
+                "code": "💻 خبير الأكواد والسكربتات",
+                "images": "✨ خبير إنشاء الصور الاحترافية"
             }[x]
         )
         st.session_state.ai_mode = mode_option
@@ -211,17 +252,21 @@ else:
             st.session_state.logged_in = False
             st.session_state.app_language = None
             st.session_state.messages = []
-            st.session_state.stats_images = 0
-            st.session_state.stats_audio = 0
+            st.session_state.stats_images_analyzed = 0
+            st.session_state.stats_audio_processed = 0
+            st.session_state.stats_images_generated = 0
             st.rerun()
 
     # الواجهة البرمجية لبرق الرئيسية
     mode_titles = {
         "general": "📚 برق الذكي - مساعدك الذكي للمعلومات العامة",
         "games": "🎮 برق الذكي - خبير الألعاب والتطبيقات المحترف",
-        "code": "💻 برق الذكي - خبير البرمجة والمطور الفائق"
+        "code": "💻 برق الذكي - خبير البرمجة والمطور الفائق",
+        "images": "✨ برق الذكي - خبير إنشاء الصور الاحترافية والجبارة"
     }
-    st.title(mode_titles[st.session_state.ai_mode])
+    # تطبيق الستايل الخاص للوضع المختار
+    mode_class = f"mode-{st.session_state.ai_mode}"
+    st.markdown(f"<h1 class='mode-badge {mode_class}'>{mode_titles[st.session_state.ai_mode]}</h1>", unsafe_allow_html=True)
     st.write("---")
 
     # عرض سجل الرسائل الحالية والوسائط
@@ -237,7 +282,13 @@ else:
 
     # واجهة الإدخال والوسائط المتعددة المتقدمة
     st.subheader("📤 مشاركة الوسائط والرسائل الحية")
-    media_tabs = st.tabs(["📝 النص والرسائل", "📸 رفع الصور", "🎙️ تسجيل المايكروفون", "📹 لقطة الكاميرا"])
+    
+    # تحديد التبويبات المتاحة بناءً على الوضع الحالي
+    tab_titles = ["📝 النص والرسائل"]
+    if st.session_state.ai_mode != "images":
+        tab_titles.extend(["📸 رفع الصور", "🎙️ تسجيل المايكروفون", "📹 لقطة الكاميرا"])
+    
+    media_tabs = st.tabs(tab_titles)
 
     image_file = None
     audio_recorded_bytes = None
@@ -246,73 +297,102 @@ else:
     with media_tabs[0]:
         st.text_area("اكتب رسالتك النصية هنا:", placeholder="اكتب شتريد او ولي من يمي...", height=100, key="text_input_box")
 
-    with media_tabs[1]:
-        image_file = st.file_uploader("اختر صورة للتحليل البصري:", type=["jpg", "jpeg", "png", "webp"])
+    if st.session_state.ai_mode != "images":
+        with media_tabs[1]:
+            image_file = st.file_uploader("اختر صورة للتحليل البصري:", type=["jpg", "jpeg", "png", "webp"])
 
-    with media_tabs[2]:
-        audio_recorded_bytes = audio_recorder(text="اضغط للتسجيل المباشر من المايكروفون 🎤", recording_color="#e74c3c", icon_size="2x")
+        with media_tabs[2]:
+            audio_recorded_bytes = audio_recorder(text="اضغط للتسجيل المباشر من المايكروفون 🎤", recording_color="#e74c3c", icon_size="2x")
 
-    with media_tabs[3]:
-        enable_camera = st.checkbox("📸 تشغيل وتفعيل الكاميرا الآن")
-        if enable_camera:
-            camera_photo = st.camera_input("التقط صورة حية للكاميرا")
+        with media_tabs[3]:
+            enable_camera = st.checkbox("📸 تشغيل وتفعيل الكاميرا الآن")
+            if enable_camera:
+                camera_photo = st.camera_input("التقط صورة حية للكاميرا")
 
     # معالجة الضغط على زر الإرسال الرئيسي
     if st.button("🚀 إرسال واستخراج الردود فوراً", use_container_width=True, type="primary", on_click=handle_submit_callback):
         text_input_extracted = st.session_state.get("submitted_content", "").strip()
         
         if text_input_extracted or image_file or audio_recorded_bytes or camera_photo:
-            user_content = text_input_extracted if text_input_extracted else "تحليل المعطيات والوسائط المرفقة"
             
-            message_obj = {"role": "user", "content": user_content, "media": []}
-            
-            if image_file and use_vision:
-                message_obj["media"].append({"type": "image", "data": Image.open(image_file)})
-                st.session_state.stats_images += 1
-            if camera_photo and use_vision:
-                message_obj["media"].append({"type": "image", "data": Image.open(camera_photo)})
-                st.session_state.stats_images += 1
-            if audio_recorded_bytes and use_audio:
-                message_obj["media"].append({"type": "audio", "data": audio_recorded_bytes})
-                st.session_state.stats_audio += 1
+            # 1. تنفيذ إنشاء الصور إذا كان النمط نشطاً
+            if st.session_state.ai_mode == "images" and text_input_extracted:
+                prompt_ar = text_input_extracted
                 
-            st.session_state.messages.append(message_obj)
-            
-            p_clean = user_content.lower()
-            res = ""
-            
-            if user_content in ANTI_INSULT:
-                res = ANTI_INSULT[user_content]
+                # إظهار رسالة المستخدم
+                user_msg = {"role": "user", "content": f"🎨 أريدك أن تنشئ صورة جبارة ودقيقة التفاصيل بناءً على هذا الوصف:\n**{prompt_ar}**", "media": []}
+                st.session_state.messages.append(user_msg)
                 
-            elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
-                for keyword, response in CREATOR_QUESTIONS.items():
-                    if keyword in p_clean:
-                        res = response
-                        break
-                        
-            elif message_obj["media"]:
-                res = "🔄 **تم استلام معطياتك وتحليلها برمجياً عبر سيرفر برق الحي:**\n\n"
+                # ترجمة الوصف للإنجليزية (موديل Stable Diffusion يعمل بالإنجليزية)
                 try:
-                    selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
+                    selected_client = client_general
                     completion = selected_client.chat.completions.create(
                         model="llama-3.3-70b-versatile",
-                        messages=[{"role": "system", "content": SYSTEM_PROMPTS[st.session_state.ai_mode]}, {"role": "user", "content": user_content}]
+                        messages=[{"role": "system", "content": "Translate the user's prompt to English precisely for image generation. Do not explain, just give the translation. Concentrate on hyper-realistic and extreme details."}, {"role": "user", "content": prompt_ar}]
                     )
-                    res += f"\n🤖 **الرد الذكي:**\n{completion.choices[0].message.content}"
+                    prompt_en = completion.choices[0].message.content
                 except Exception as e:
-                    res += f"\n❌ خطأ في الاتصال بالسيرفر للتحليل: {str(e)}"
-            
+                    prompt_en = prompt_ar # إذا فشلت الترجمة، نستخدم النص العربي مباشرة
+                
+                # تنفيذ إنشاء الصورة
+                generated_image = generate_image(prompt_en)
+                
+                if generated_image:
+                    ai_reply = "✅ **تم إنشاء الصورة الجبارة بنجاح!** لقد ركزت على أدق التفاصيل لتنافس الشركات العالمية."
+                    st.session_state.messages.append({"role": "assistant", "content": ai_reply, "media": [{"type": "image", "data": generated_image}]})
+                    st.session_state.stats_images_generated += 1 # تحديث عداد الإحصائيات
+                else:
+                    st.session_state.messages.append({"role": "assistant", "content": "❌ عذراً! حدث خطأ أثناء إنشاء الصورة. يرجى مراجعة مفتاح الـ TOKEN أو المحاولة لاحقاً."})
+                
+                st.session_state["submitted_content"] = ""
+                st.rerun()
+
+            # 2. تنفيذ معالجة الأوضاع النصية والوسائط الأخرى
             else:
-                try:
-                    selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
-                    completion = selected_client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "system", "content": SYSTEM_PROMPTS[st.session_state.ai_mode]}, {"role": "user", "content": user_content}]
-                    )
-                    res = completion.choices[0].message.content
-                except Exception as e:
-                    res = f"❌ خطأ في الاتصال بسيرفر برق الرئيسي: {str(e)}"
-            
-            st.session_state.messages.append({"role": "assistant", "content": res})
-            st.session_state["submitted_content"] = ""
-            st.rerun()
+                user_content = text_input_extracted if text_input_extracted else "تحليل المعطيات والوسائط المرفقة"
+                message_obj = {"role": "user", "content": user_content, "media": []}
+                
+                if image_file and use_vision:
+                    message_obj["media"].append({"type": "image", "data": Image.open(image_file)})
+                    st.session_state.stats_images_analyzed += 1
+                if camera_photo and use_vision:
+                    message_obj["media"].append({"type": "image", "data": Image.open(camera_photo)})
+                    st.session_state.stats_images_analyzed += 1
+                if audio_recorded_bytes and use_audio:
+                    message_obj["media"].append({"type": "audio", "data": audio_recorded_bytes})
+                    st.session_state.stats_audio_processed += 1
+                    
+                st.session_state.messages.append(message_obj)
+                
+                p_clean = user_content.lower()
+                res = ""
+                
+                # التحقق من الردود الخاصة والرد الدفاعي
+                if user_content in ANTI_INSULT:
+                    res = ANTI_INSULT[user_content]
+                elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
+                    for keyword, response in CREATOR_QUESTIONS.items():
+                        if keyword in p_clean:
+                            res = response
+                            break
+                            
+                # استدعاء الموديل النصي المناسب
+                else:
+                    try:
+                        selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
+                        sys_prompt = SYSTEM_PROMPTS[st.session_state.ai_mode]
+                        
+                        if message_obj["media"]:
+                            sys_prompt += "\nساعد أيضاً في تحليل الصور والمرفقات الأخرى إن وجد في سياق المحادثة."
+
+                        completion = selected_client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": user_content}]
+                        )
+                        res = completion.choices[0].message.content
+                    except Exception as e:
+                        res = f"❌ خطأ في الاتصال بسيرفر برق الرئيسي: {str(e)}"
+                
+                st.session_state.messages.append({"role": "assistant", "content": res})
+                st.session_state["submitted_content"] = ""
+                st.rerun()
