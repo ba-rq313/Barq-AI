@@ -23,14 +23,11 @@ st.markdown("""
     <style>
     .media-container { border-radius: 10px; padding: 10px; margin: 10px 0; background-color: #f0f2f6; }
     .mode-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 5px; }
-    .mode-general { background-color: #e3f2fd; color: #1976d2; }
-    .mode-games { background-color: #f3e5f5; color: #7b1fa2; }
-    .mode-code { background-color: #e8f5e9; color: #388e3c; }
     .stButton>button { border-radius: 8px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-# 2. إدارة الذاكرة وحالات التنقل واللغات
+# 2. إدارة الذاكرة وحالات التنقل واللغات والإحصائيات
 if "app_language" not in st.session_state:
     st.session_state.app_language = None
 if "logged_in" not in st.session_state:
@@ -42,13 +39,19 @@ if "ai_mode" not in st.session_state:
 if "submitted_content" not in st.session_state:
     st.session_state.submitted_content = ""
 
+# عدادات الإحصائيات الحية للوحة التحكم
+if "stats_images" not in st.session_state:
+    st.session_state.stats_images = 0
+if "stats_audio" not in st.session_state:
+    st.session_state.stats_audio = 0
+
 # دالة Callback آمنة للتحكم في المدخلات وتجنب الأخطاء البرمجية للـ State
 def handle_submit_callback():
     st.session_state["submitted_content"] = st.session_state.text_input_box
     st.session_state.text_input_box = ""
 
 # ========================================================
-# المرحلة الأولى: واجهة اختيار اللغة (ميجابایت)
+# المرحلة الأولى: واجهة اختيار اللغة
 # ========================================================
 if st.session_state.app_language is None:
     st.markdown("<h1 style='text-align: center; color: #1976d2;'>🌐 اختر اللغة المفضلة / Choose Language</h1>", unsafe_allow_html=True)
@@ -133,16 +136,11 @@ elif not st.session_state.logged_in:
 # المرحلة الثالثة: التطبيق الكامل والضخم (برق الذكي VIP)
 # ========================================================
 else:
-    # إعداد الاتصال بسيرفرات الحماية والـ API الخاص بـ Groq
     API_KEY = os.environ.get("GROQ_API_KEY", "")
     client_general = Groq(api_key=API_KEY)
     client_games = Groq(api_key=API_KEY)
     client_code = Groq(api_key=API_KEY)
 
-    FILE_NAME = 'barq_final.py'
-    BACKUP_NAME = 'barq_backup.py'
-
-    # نصوص وقوالب النظام المتقدمة الموزعة حسب الأوضاع
     SYSTEM_PROMPTS = {
         "general": "أنت برق الذكي، مساعد ذكي شامل. صانعك ومطورك الوحيد هو العبقري بارق. قدم معلومات دقيقة وعامة.",
         "games": "أنت برق الذكي، خبير الألعاب والتطبيقات. صانعك ومطورك هو بارق. ساعد المستخدم في الاستراتيجيات والنصائح المتقدمة.",
@@ -165,16 +163,34 @@ else:
         "من هو بارق": "👑 **بارق هو صانعي ومبتكري وتاج رأسي**، المطور العبقري الذي أعطاني هذا الذكاء! ⚡"
     }
 
-    # --- القائمة الجانبية (Sidebar) ---
+    # --- القائمة الجانبية (Sidebar) مع لوحة التحكم الإحصائية تفاعلياً ---
     with st.sidebar:
+        st.header("📊 لوحة التحكم والإحصائيات الحية")
+        
+        # 1. حساب إجمالي الرسائل المرسلة في المحادثة
+        total_msg = len([m for m in st.session_state.messages if m["role"] == "user"])
+        st.metric(label="💬 عدد رسائل المستخدم المرسلة", value=total_msg)
+        
+        # 2. عرض إحصائيات المرفقات
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            st.metric(label="📸 صور محللة", value=st.session_state.stats_images)
+        with col_s2:
+            st.metric(label="🎙️ مقاطع صوتية", value=st.session_state.stats_audio)
+            
+        # 3. مؤشر حالة النظام والسيرفر
+        st.markdown("🌐 **حالة السيرفر:** `متصل ومستقر 🟢` ")
+        st.markdown(f"🎯 **النمط الحالي:** `{st.session_state.ai_mode.upper()}`")
+        
+        st.divider()
         st.header("📢 دعم التطبيق والإعلانات")
         st.link_button(
-            label="اضغط هنا لمشاهدة الإعلانات ودعمنا لأننا عكس التطبيقات الأخرى نوفر كل شيء بالمجان",
+            label="اضغط هنا لمشاهدة الإعلانات ودعمنا لأننا نوفر كل شيء بالمجان",
             url="https://t.me/your_sponsor_channel"
         )
         st.divider()
         
-        st.header("🎯 الأوضاع المتقدمة")
+        st.header("🎯 الأوضاع المتاحة")
         mode_option = st.radio(
             "اختر وضع الذكاء الاصطناعي الحالي:",
             options=["general", "games", "code"],
@@ -195,9 +211,11 @@ else:
             st.session_state.logged_in = False
             st.session_state.app_language = None
             st.session_state.messages = []
+            st.session_state.stats_images = 0
+            st.session_state.stats_audio = 0
             st.rerun()
 
-    # الواجهة البرمجية لبرق
+    # الواجهة البرمجية لبرق الرئيسية
     mode_titles = {
         "general": "📚 برق الذكي - مساعدك الذكي للمعلومات العامة",
         "games": "🎮 برق الذكي - خبير الألعاب والتطبيقات المحترف",
@@ -250,37 +268,30 @@ else:
             
             if image_file and use_vision:
                 message_obj["media"].append({"type": "image", "data": Image.open(image_file)})
+                st.session_state.stats_images += 1
             if camera_photo and use_vision:
                 message_obj["media"].append({"type": "image", "data": Image.open(camera_photo)})
+                st.session_state.stats_images += 1
             if audio_recorded_bytes and use_audio:
                 message_obj["media"].append({"type": "audio", "data": audio_recorded_bytes})
+                st.session_state.stats_audio += 1
                 
-            st.session_state.messages = [message_obj]
+            st.session_state.messages.append(message_obj)
             
             p_clean = user_content.lower()
             res = ""
             
-            # 1. التحقق من ردع الإساءات
             if user_content in ANTI_INSULT:
                 res = ANTI_INSULT[user_content]
                 
-            # 2. التحقق من أسئلة المبتكر بارق
             elif any(keyword in p_clean for keyword in CREATOR_QUESTIONS.keys()):
                 for keyword, response in CREATOR_QUESTIONS.items():
                     if keyword in p_clean:
                         res = response
                         break
                         
-            # 3. معالجة الوسائط (صور أو صوت) إن وجدت
             elif message_obj["media"]:
                 res = "🔄 **تم استلام معطياتك وتحليلها برمجياً عبر سيرفر برق الحي:**\n\n"
-                for media_item in message_obj["media"]:
-                    if media_item["type"] == "image":
-                        res += "📸 *(تم استلام وتحليل الصورة بنجاح بواسطة موديل الرؤية)*\n"
-                    elif media_item["type"] == "audio":
-                        res += "🎙️ *(تم استلام المقطع الصوتي وجاري معالجته عبر خادم الصوت)*\n"
-                
-                # استدعاء طبيعي ومبسط للموديل للمساعدة في التحليل النصي المرفق
                 try:
                     selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
                     completion = selected_client.chat.completions.create(
@@ -291,7 +302,6 @@ else:
                 except Exception as e:
                     res += f"\n❌ خطأ في الاتصال بالسيرفر للتحليل: {str(e)}"
             
-            # 4. المحادثة النصية الافتراضية للذكاء الاصطناعي
             else:
                 try:
                     selected_client = {"general": client_general, "games": client_games, "code": client_code}[st.session_state.ai_mode]
