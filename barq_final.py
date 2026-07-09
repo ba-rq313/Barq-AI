@@ -143,9 +143,9 @@ elif not st.session_state.logged_in:
 # المرحلة الثالثة: التطبيق الكامل والضخم (برق الذكي VIP)
 # ========================================================
 else:
-    API_KEY = os.environ.get("GROQ_API_KEY", "")
-    HF_TOKEN = os.environ.get("HF_TOKEN", "")
-
+# جلب المفاتيح بأمان من إعدادات Streamlit Secrets لضمان عملها فوراً
+    API_KEY = st.secrets["GROQ_API_KEY"] if "GROQ_API_KEY" in st.secrets else os.environ.get("GROQ_API_KEY", "")
+    HF_TOKEN = st.secrets["HF_TOKEN"] if "HF_TOKEN" in st.secrets else os.environ.get("HF_TOKEN", "")
     client_general = Groq(api_key=API_KEY)
     client_games = Groq(api_key=API_KEY)
     client_code = Groq(api_key=API_KEY)
